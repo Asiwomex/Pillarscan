@@ -2,7 +2,7 @@
 
 Pillarscan scans an AWS account with read-only access and reports what it finds, ranked by severity, across three Well-Architected pillars: Security, Reliability and Cost Optimization.
 
-It is a work in progress. The scanner runs as a command-line tool today; the dashboard, API and connect-account flow come next.
+It is a work in progress. The scanner and the dashboard work today, on sample data; the API and the connect-account flow come next.
 
 ## Run the scanner
 
@@ -53,6 +53,25 @@ All 22 checks, grouped by pillar.
 | `logs_no_retention` | CloudWatch log group with no retention set | Cost | Low |
 
 Each check is one file in [scanner/checks](scanner/checks), named after its `check_id`. A check that cannot run produces a finding with status `error` and the scan carries on. Checks run once per enabled region unless the service is global; pass `--regions us-east-1,us-east-2` to limit a scan.
+
+## Dashboard
+
+A Next.js app in [web](web) that shows a scan: a posture score, a score per pillar, failed checks by severity, and a filterable table with a detail panel that explains each finding and how to fix it. It opens straight into sample data, with no sign-in.
+
+```powershell
+cd web
+pnpm install
+pnpm dev
+```
+
+The score is the severity-weighted share of checks that passed; see [web/lib/score.ts](web/lib/score.ts).
+
+## Sample data
+
+The dashboard reads two files in [sample-data](sample-data):
+
+- `demo-findings.json`: a fictional company's account. [generate_demo.py](sample-data/generate_demo.py) builds it by running the real scanner against mocked AWS, so every check has something to show without paying for RDS instances or load balancers.
+- `findings.json`: a scan of this project's own AWS account, scrubbed. The misconfigured resources in it are created on purpose by [infra/bait](infra/bait).
 
 ## Tests
 
