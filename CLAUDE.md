@@ -116,13 +116,13 @@ Each stage must leave something showable. Do not start a later stage before the 
 ## Current status
 
 - Repo: `github.com/Asiwomex/Pillarscan`. Python uses `pip` + `venv` (`.venv/`, Python 3.13 locally); `uv` is not installed.
-- Stage 1 in progress. Done: findings schema (`scanner/findings.py`), check contract (`scanner/check.py`), engine and CLI, and three checks with moto tests: `iam_root_mfa`, `iam_user_mfa`, `iam_access_key_age`. Tests live in `tests/scanner/`; run `pytest`.
+- Stage 1 code is complete: findings schema (`scanner/findings.py`), check contract (`scanner/check.py`), engine and CLI, and all 22 checks in `scanner/checks/`, each with moto tests in `tests/scanner/` (run `pytest`). moto cannot model root MFA or Lambda dead-letter config, so those two pass cases use a botocore `Stubber`.
 - The CLI writes `{"scan": {...metadata}, "findings": [...]}`; each finding follows the schema above.
 - The scanner has not been run against the real account yet.
 - AWS: the owner has one account and has just created an IAM admin user to use instead of root. MFA on root and on the IAM user may not be set up yet; ask before assuming.
 - The console appeared to be set to `us-east-2`; confirm the default region with the owner.
 - Development machine is Windows. Prefer commands that work in PowerShell or Git Bash, and say which.
-- **Next step: finish stage 1.** Remaining security checks first (the first regional ones: S3 public access block, open security groups, EBS default encryption), then reliability and cost. After that, a first real scan and scrubbed `sample-data/`.
+- **Next step: finish stage 1 against real AWS.** Needs the owner: a working CLI profile, the default region, and MFA status. Then a first real scan, cheap bait resources (ask first), and a scrubbed `sample-data/` file. After that, stage 2.
 
 ## Rules
 

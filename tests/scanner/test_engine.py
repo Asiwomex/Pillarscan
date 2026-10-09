@@ -52,7 +52,8 @@ def test_discovers_checks_named_after_their_files() -> None:
     check_ids = [check.meta.check_id for check in discover_checks()]
 
     assert check_ids == sorted(check_ids)
-    assert {"iam_root_mfa", "iam_user_mfa", "iam_access_key_age"} <= set(check_ids)
+    assert len(check_ids) == 22
+    assert {"iam_root_mfa", "s3_versioning", "logs_no_retention"} <= set(check_ids)
 
 
 def test_global_checks_run_once_and_regional_checks_once_per_region(
@@ -97,11 +98,14 @@ def test_enabled_regions_come_from_the_account(session: boto3.Session) -> None:
 def test_cli_writes_findings_in_the_schema(tmp_path: Path) -> None:
     out = tmp_path / "findings.json"
 
-    exit_code = main(["--out", str(out)])
+    exit_code = main(["--out", str(out), "--regions", "us-east-1"])
 
     assert exit_code == 0
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["scan"]["account_id"] == MOTO_ACCOUNT_ID
+    assert report["scan"]["regions"] == ["us-east-1"]
+    assert len(report["scan"]["checks_run"]) == 22
+    assert not [f for f in report["findings"] if f["status"] == "error"]
     assert report["findings"], "a fresh account should at least fail the root MFA check"
     for finding in report["findings"]:
         assert set(finding) == SCHEMA_KEYS

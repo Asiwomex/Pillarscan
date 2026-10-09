@@ -14,7 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "moto[ec2,iam,sts]>=5",
+    "moto[autoscaling,awslambda,cloudtrail,dynamodb,ec2,elbv2,guardduty,iam,logs,rds,s3,s3control,sts]>=5",
 ]
 
 [tool.setuptools.packages.find]

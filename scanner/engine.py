@@ -6,6 +6,7 @@ import importlib
 import logging
 import pkgutil
 from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import ModuleType
@@ -22,14 +23,13 @@ from scanner.check import (
     CheckMeta,
     Scope,
 )
-from scanner.findings import Finding, Status, format_timestamp
+from scanner.findings import Finding, format_timestamp
 
 logger = logging.getLogger(__name__)
 
-ERROR_REMEDIATION = (
-    "Confirm the scanning role has the SecurityAudit and ViewOnlyAccess "
-    "managed policies attached, then run the scan again."
-)
+# A scan is almost entirely waiting on AWS, so threads speed it up a lot.
+# Kept low to stay well under API rate limits.
+MAX_WORKERS = 8
 
 
 class CheckDefinitionError(Exception):
@@ -102,15 +102,7 @@ def run_check(check: Check, ctx: CheckContext) -> list[Finding]:
         return list(check.run(ctx))
     except Exception as exc:  # noqa: BLE001 - one broken check must not stop the scan
         logger.warning("%s failed in %s: %s", check.meta.check_id, ctx.region, exc)
-        return [
-            ctx.finding(
-                check.meta,
-                Status.ERROR,
-                ctx.account_arn,
-                f"The check could not run: {type(exc).__name__}: {exc}",
-                remediation=ERROR_REMEDIATION,
-            )
-        ]
+        return [ctx.error(check.meta, ctx.account_arn, exc)]
 
 
 def run_scan(
@@ -140,14 +132,19 @@ def run_scan(
     else:
         scan_regions = list(regions)
 
-    findings: list[Finding] = []
+    runs: list[tuple[Check, CheckContext]] = []
     for check in checks:
         targets = [GLOBAL_REGION] if check.meta.scope is Scope.GLOBAL else scan_regions
         for region in targets:
             ctx = CheckContext(
                 session=session, account_id=account_id, region=region, now=started_at
             )
-            findings.extend(run_check(check, ctx))
+            runs.append((check, ctx))
+
+    # map() returns results in submission order, so output stays deterministic.
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        results = pool.map(lambda run: run_check(*run), runs)
+        findings = [finding for result in results for finding in result]
 
     return ScanResult(
         account_id=account_id,
