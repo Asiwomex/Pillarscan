@@ -1,0 +1,150 @@
+# Pillarscan
+
+A self-service AWS posture review tool: it scans an AWS account with read-only access and reports findings ranked by severity across three AWS Well-Architected pillars (Security, Reliability, Cost Optimization). Inspired by refraxion.io, but with its own name, design and code.
+
+## Purpose and audience
+
+- This is a **portfolio project**, not a business. The owner will record videos of it and show it to recruiters.
+- Priorities, in order: (1) a live demo anyone can open without an AWS account, (2) clean, readable code that shows cloud and security understanding, (3) a clear README with an architecture diagram.
+- Working name is **Pillarscan**. A web search found no existing product with that name. Domain and social handles have NOT been checked yet (owner to check `pillarscan.dev` / `pillarscan.io`).
+- Do not put "AWS" in the product name, and do not copy Refraxion's branding or visual design.
+
+## Decisions already made (do not reopen without asking)
+
+- **Write our own scanner.** Do not wrap Prowler. Prowler already ships its own web UI and API, so a wrapper adds little. Our own checks are the main thing a recruiter will look at.
+- **One AWS account only.** The platform, the deliberately misconfigured "bait" resources, and the first scanned account are all the same account. The scanner still uses `sts:AssumeRole` with an external ID, so the cross-account code path is real.
+- **Demo mode is required.** The landing page must open straight into a populated dashboard using scrubbed sample data, with no sign-in.
+- **Keep cost near zero.** Target is well under $1 a month.
+
+## Stack
+
+| Layer | Choice | Runs on |
+|---|---|---|
+| Frontend | Next.js (App Router, whatever `create-next-app@latest` installs), TypeScript, Tailwind CSS, shadcn/ui | Vercel Hobby plan |
+| Charts / tables | Recharts, TanStack Table | Frontend |
+| API | Python 3.12+, FastAPI, packaged for Lambda | Lambda behind API Gateway HTTP API |
+| Scanner | Python 3.12+, boto3, one file per check | Second Lambda, triggered through SQS |
+| Database | DynamoDB, single table (accounts, scans, findings) | AWS |
+| Auth | Amazon Cognito + API Gateway JWT authorizer | AWS |
+| Onboarding | CloudFormation template that creates a read-only role with an external ID | Template in a public S3 bucket |
+| Infrastructure | Terraform, remote state in S3 | Local machine and CI |
+| CI/CD | GitHub Actions, AWS access through OIDC (no stored keys) | GitHub |
+| Tests | pytest + moto (mocked AWS) | Local and CI |
+| Monitoring | CloudWatch logs, one alarm on scanner errors | AWS |
+
+Package managers: `pnpm` for the frontend, `uv` or `pip` + `venv` for Python (ask the owner which they prefer the first time it matters).
+
+## Repo layout
+
+```
+pillarscan/
+  web/          Next.js app
+  api/          FastAPI service
+  scanner/      checks/, engine, findings schema, CLI entry point
+  infra/        Terraform
+  onboarding/   CloudFormation template for the read-only role
+  sample-data/  scrubbed scan output used by demo mode
+  docs/         architecture diagram, screenshots
+  .github/workflows/
+```
+
+## Findings schema
+
+Every check returns zero or more findings in this shape. The frontend, API and database all use it, so change it deliberately.
+
+```json
+{
+  "check_id": "s3_public_access_block",
+  "title": "S3 bucket without public access block",
+  "pillar": "security",
+  "severity": "high",
+  "status": "fail",
+  "resource_arn": "arn:aws:s3:::example-bucket",
+  "resource_type": "AWS::S3::Bucket",
+  "region": "us-east-1",
+  "account_id": "000000000000",
+  "description": "What is wrong and why it matters.",
+  "remediation": "Concrete steps to fix it.",
+  "scanned_at": "2026-10-09T21:00:00Z"
+}
+```
+
+- `pillar`: `security` | `reliability` | `cost`
+- `severity`: `critical` | `high` | `medium` | `low`
+- `status`: `pass` | `fail` | `error`
+
+## Checks to implement first
+
+Security
+- Root account without MFA
+- IAM users without MFA
+- Access keys older than 90 days
+- Policies granting `*` on `*`
+- S3 buckets without public access block
+- Security groups open to 0.0.0.0/0 on port 22 or 3389
+- CloudTrail not enabled in all regions
+- Publicly accessible RDS instances
+- GuardDuty not enabled
+- EBS default encryption off
+
+Reliability
+- RDS without Multi-AZ
+- RDS automated backups disabled
+- S3 versioning off
+- DynamoDB tables without point-in-time recovery
+- Lambda functions without a dead-letter queue
+- Auto scaling groups in a single availability zone
+
+Cost
+- Unattached EBS volumes
+- Unassociated Elastic IPs
+- gp2 volumes that could be gp3
+- Snapshots older than 90 days
+- Load balancers with no targets
+- CloudWatch log groups with no retention set
+
+## Build order
+
+1. **Scanner as a CLI.** `python -m scanner --profile <name> --out findings.json`. Engine discovers checks in `scanner/checks/`, runs them across regions, writes findings in the schema above. Every check has a moto test.
+2. **Dashboard on that JSON.** Posture score, findings by pillar and severity, filterable table, detail panel with remediation. Deploy to Vercel in demo mode using `sample-data/`.
+3. **Backend.** Terraform for DynamoDB, both Lambdas, SQS and API Gateway. Frontend reads from the API and shows scan history.
+4. **Connect-account flow.** Cognito sign-in, the CloudFormation template, and a "run scan" button that assumes the role in the connected account.
+5. **Polish.** GitHub Actions pipeline, README with architecture diagram, demo video.
+
+Each stage must leave something showable. Do not start a later stage before the current one works end to end.
+
+## Current status
+
+- Repo: `github.com/Asiwomex/Pillarscan`. Python uses `pip` + `venv` (`.venv/`, Python 3.13 locally); `uv` is not installed.
+- Stage 1 in progress. Done: findings schema (`scanner/findings.py`), check contract (`scanner/check.py`), engine and CLI, and three checks with moto tests: `iam_root_mfa`, `iam_user_mfa`, `iam_access_key_age`. Tests live in `tests/scanner/`; run `pytest`.
+- The CLI writes `{"scan": {...metadata}, "findings": [...]}`; each finding follows the schema above.
+- The scanner has not been run against the real account yet.
+- AWS: the owner has one account and has just created an IAM admin user to use instead of root. MFA on root and on the IAM user may not be set up yet; ask before assuming.
+- The console appeared to be set to `us-east-2`; confirm the default region with the owner.
+- Development machine is Windows. Prefer commands that work in PowerShell or Git Bash, and say which.
+- **Next step: finish stage 1.** Remaining security checks first (the first regional ones: S3 public access block, open security groups, EBS default encryption), then reliability and cost. After that, a first real scan and scrubbed `sample-data/`.
+
+## Rules
+
+Security and secrets
+- Never commit AWS account IDs, access keys, ARNs from the real account, or `.env` files. Use `000000000000` in examples and scrub `sample-data/`.
+- The onboarding role attaches only the AWS managed policies `SecurityAudit` and `ViewOnlyAccess`. The scanner must never call a write API.
+- Role assumption always passes an external ID.
+- Prefer short-lived credentials (`aws login` in recent AWS CLI v2) over long-lived access keys.
+
+Cost
+- Do not call the Cost Explorer API (it is billed per request). Cost checks are resource-based.
+- Never leave these running as bait: Elastic IPs, load balancers, RDS instances, NAT gateways. Test those checks with moto instead.
+- Cheap bait is fine: empty buckets, unattached security groups, a 1 GB unattached volume, IAM users with no permissions. Never attach an open security group to a running instance.
+- Tag everything: `project=pillarscan` for the platform, `project=pillarscan-bait` for bait.
+- Ask before creating any AWS resource that is not covered by an always-free allowance.
+
+Code
+- One check per file in `scanner/checks/`, named after its `check_id`.
+- A check that fails to run returns a finding with `status: "error"`; it must not crash the scan.
+- Handle pagination on every list/describe call.
+- Type hints throughout the Python code; TypeScript strict mode in the frontend.
+
+Working style
+- The owner is building this to learn as well as to show. Explain non-obvious AWS and security decisions briefly as you go.
+- Ask before running anything against the real AWS account for the first time in a session.
