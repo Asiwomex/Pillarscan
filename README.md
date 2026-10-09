@@ -4,7 +4,11 @@
 
 Pillarscan scans an AWS account with read-only access and ranks every weak spot it finds across three AWS Well-Architected pillars: security, reliability and cost. Each finding names the exact resource, says why it matters and gives the fix.
 
-It is a portfolio project by [Asiwome Boateng](https://asiwomex.vercel.app/), not a product. The site opens straight into a live demo on sample data, with no sign-in.
+**Live demo: [pillarscan.lytaworks.com](https://pillarscan.lytaworks.com/)** (also at [pillarscan.vercel.app](https://pillarscan.vercel.app/)). It opens straight into a populated dashboard on sample data, with no sign-in.
+
+[![The Pillarscan home page: a headline, three pillars built from blocks, and the dashboard below](docs/screenshot.png)](https://pillarscan.lytaworks.com/)
+
+It is a portfolio project by [Asiwome Boateng](https://asiwomex.vercel.app/), not a product.
 
 ## What is built
 

@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { FindingDetail } from "@/components/finding-detail";
 import { FindingsTable } from "@/components/findings-table";
 import { PillarBlocks } from "@/components/pillar-blocks";
-import { ServiceChart } from "@/components/service-chart";
+import { ServiceChartFrame } from "@/components/service-chart-frame";
 import { Mark } from "@/components/site/mark";
 import { SEVERITY_COLOR } from "@/components/severity-mark";
 import {
@@ -217,7 +217,6 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
                     type="button"
                     onClick={() => update({ status: "fail", severity })}
                     className="group flex items-center gap-2 rounded-md py-1 text-left"
-                    aria-label={`${summary.failedBySeverity[severity]} ${SEVERITY_LABELS[severity].toLowerCase()} failures. Show them in the table.`}
                   >
                     <span
                       className="size-2 shrink-0 rounded-full"
@@ -228,6 +227,7 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
                     <span className="text-muted-ink underline-offset-4 group-hover:underline">
                       {SEVERITY_LABELS[severity]}
                     </span>
+                    <span className="sr-only">failures, show them in the table</span>
                   </button>
                 </li>
               ))}
@@ -238,7 +238,7 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
             <h3 id="service-heading" className="mb-3 text-[0.8125rem] font-medium text-muted-ink">
               Failed checks by service
             </h3>
-            <ServiceChart failed={summary.failed} />
+            <ServiceChartFrame failed={summary.failed} />
           </section>
         </div>
 

@@ -2,17 +2,19 @@ import type { Metadata, Viewport } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+// A variable font: one file covers every weight the site uses.
 const body = Instrument_Sans({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
 });
 
 // Used only for machine identifiers: ARNs, resource IDs, regions.
+// It only appears below the fold, so it is not preloaded.
 const data = JetBrains_Mono({
   variable: "--font-data",
   subsets: ["latin"],
   weight: "400",
+  preload: false,
 });
 
 const TITLE = "Pillarscan: find the cracks in your AWS account";

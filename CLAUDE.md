@@ -130,8 +130,9 @@ Each stage must leave something showable. Do not start a later stage before the 
 - The site has a fixed top menu, a share image (`web/app/opengraph-image.tsx`), a favicon and a 404 page. Footer credits are fixed by the owner: "Built by Asiwome Boateng" linking to https://asiwomex.vercel.app/ and "Powered by LytaWorks" linking to https://lytaworks.com/ (all in `web/lib/links.ts`). The owner wants it to work well on phones.
 - The CLI can scan through the audit role: `--role-arn` with `--external-id` (both required together; `scanner/session.py`). The role template is `onboarding/pillarscan-role.yaml`. It is deployed in the real account as CloudFormation stack `pillarscan-audit-role` (us-east-1). A scan through it ran all 22 checks with no errors, and a wrong external ID is refused. The role ARN and external ID are in the git-ignored `.env` at the repo root (`PILLARSCAN_ROLE_ARN`, `PILLARSCAN_EXTERNAL_ID`); never print or commit the external ID.
 - CI is `.github/workflows/ci.yml`: pytest on Python 3.12 and 3.13, `cfn-lint` on the role template, and the site's lint and build (the build type-checks; a separate `tsc` step fails in CI because Next.js generates the `LayoutProps` global during the build). No AWS access in CI yet.
-- Not yet deployed to Vercel.
-- **Next step: deploy `web/` to Vercel** (owner links the GitHub repo with root directory `web`, keeping "include files outside the root directory" on so `sample-data/` is available at build). Then stage 3, the backend.
+- Live at https://pillarscan.lytaworks.com/ (primary) and https://pillarscan.vercel.app/. Vercel deploys every push to `main`, so a push is a production release.
+- Lighthouse, phone profile, on the live site on 2026-10-09: performance 77, accessibility 97. The chart library is now loaded only when the chart scrolls into view (`web/components/service-chart-frame.tsx`), which measured 95 / 100 on a local production build. Re-measure the live site after it deploys.
+- **Next step: stage 3**, the backend (Terraform for DynamoDB, both Lambdas, SQS and API Gateway; scan history in the dashboard). Ask before creating each AWS resource.
 
 ## Rules
 
