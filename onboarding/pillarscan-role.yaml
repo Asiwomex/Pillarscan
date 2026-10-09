@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Read-only role that Pillarscan assumes to scan this account. It can look
+  at configuration and change nothing.
+
+Parameters:
+  ScannerPrincipalArn:
+    Type: String
+    Description: >-
+      ARN of the IAM user, role or account that runs the scanner and is
+      allowed to assume this role.
+    AllowedPattern: "^arn:aws[a-z-]*:iam::[0-9]{12}:(root|user/.+|role/.+)$"
+  ExternalId:
+    Type: String
+    Description: >-
+      A value only you and the scanner know. The scanner must send it on
+      every scan. Use a long random string.
+    MinLength: 16
+    MaxLength: 128
+    NoEcho: true
+
+Resources:
+  AuditRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: PillarscanAuditRole
+      Description: Read-only access for Pillarscan posture scans.
+      # One hour is the shortest a role session can be capped at; a scan
+      # takes about a minute.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref ScannerPrincipalArn
+            Action: sts:AssumeRole
+            # Without this condition, anyone able to use the scanner could
+            # point it at this role (the "confused deputy" problem).
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      # AWS managed, read-only policies. No inline or write permissions.
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/SecurityAudit
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/job-function/ViewOnlyAccess
+      Tags:
+        - Key: project
+          Value: pillarscan
+
+Outputs:
+  RoleArn:
+    Description: Pass this to the scanner as --role-arn.
+    Value: !GetAtt AuditRole.Arn

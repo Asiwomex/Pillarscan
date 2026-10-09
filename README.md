@@ -1,8 +1,45 @@
 # Pillarscan
 
-Pillarscan scans an AWS account with read-only access and reports what it finds, ranked by severity, across three Well-Architected pillars: Security, Reliability and Cost Optimization.
+[![CI](https://github.com/Asiwomex/Pillarscan/actions/workflows/ci.yml/badge.svg)](https://github.com/Asiwomex/Pillarscan/actions/workflows/ci.yml)
 
-It is a work in progress. The scanner and the dashboard work today, on sample data; the API and the connect-account flow come next.
+Pillarscan scans an AWS account with read-only access and ranks every weak spot it finds across three AWS Well-Architected pillars: security, reliability and cost. Each finding names the exact resource, says why it matters and gives the fix.
+
+It is a portfolio project by [Asiwome Boateng](https://asiwomex.vercel.app/), not a product. The site opens straight into a live demo on sample data, with no sign-in.
+
+## What is built
+
+| Part | State | Where |
+|---|---|---|
+| Scanner: 22 checks, run from the command line | Built | [scanner](scanner) |
+| Tests: every check tested against mocked AWS | Built | [tests](tests) |
+| Read-only role template for the account being scanned | Built | [onboarding](onboarding) |
+| Site: landing page and dashboard on sample data | Built | [web](web) |
+| API and scan history | Planned | |
+| Sign in and scan your own account from the browser | Planned | |
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph account["AWS account being scanned"]
+        role["PillarscanAuditRole<br/>SecurityAudit + ViewOnlyAccess"]
+        resources["S3, IAM, EC2, RDS, ..."]
+        role -. "read-only API calls" .-> resources
+    end
+
+    scanner["Scanner CLI<br/>22 checks, all regions in parallel"]
+    findings["findings.json"]
+    scrub["scrub"]
+    sample["sample-data/"]
+    site["Next.js site<br/>static, on Vercel"]
+
+    scanner -- "sts:AssumeRole + external ID" --> role
+    scanner --> findings --> scrub --> sample --> site
+
+    moto["moto (mocked AWS)"] -. "tests and demo data" .-> scanner
+```
+
+The scanner never calls a write API. The role it assumes carries two AWS managed policies, `SecurityAudit` and `ViewOnlyAccess`, and its trust policy only accepts the call when the scanner sends the agreed external ID.
 
 ## Run the scanner
 
@@ -15,17 +52,19 @@ pip install -e ".[dev]"
 python -m scanner --profile <aws-profile> --out findings.json
 ```
 
-The scanner only calls read APIs (`Get*`, `List*`, `Describe*`). The `SecurityAudit` and `ViewOnlyAccess` managed policies are enough to run it.
+That scans with the profile's own permissions. To scan through the read-only role instead, deploy [onboarding/pillarscan-role.yaml](onboarding/pillarscan-role.yaml) with CloudFormation in the account you want scanned, then pass the role and the external ID you chose:
 
-`findings.json` contains real account IDs and ARNs, so it is git-ignored. To publish a scan as demo data, scrub it first:
+```powershell
+python -m scanner --profile <aws-profile> --role-arn <role-arn> --external-id <external-id>
+```
+
+A scan of 17 regions takes under a minute. `findings.json` contains real account IDs and ARNs, so it is git-ignored. To publish a scan as demo data, scrub it first:
 
 ```powershell
 python -m scanner.scrub findings.json sample-data/findings.json
 ```
 
 ## Checks
-
-All 22 checks, grouped by pillar.
 
 | Check | What it flags | Pillar | Severity |
 |---|---|---|---|
@@ -54,9 +93,9 @@ All 22 checks, grouped by pillar.
 
 Each check is one file in [scanner/checks](scanner/checks), named after its `check_id`. A check that cannot run produces a finding with status `error` and the scan carries on. Checks run once per enabled region unless the service is global; pass `--regions us-east-1,us-east-2` to limit a scan.
 
-## Dashboard
+## Site
 
-A Next.js app in [web](web) that shows a scan: a posture score, a score per pillar, failed checks by severity, and a filterable table with a detail panel that explains each finding and how to fix it. It opens straight into sample data, with no sign-in.
+A Next.js app in [web](web): a landing page with the dashboard embedded as the live demo. The dashboard shows a posture score, failed checks by service, one block per finding in each pillar, and a filterable table with a detail panel that explains each finding and how to fix it.
 
 ```powershell
 cd web
@@ -64,11 +103,11 @@ pnpm install
 pnpm dev
 ```
 
-The score is the severity-weighted share of checks that passed; see [web/lib/score.ts](web/lib/score.ts).
+The score is the severity-weighted share of checks that passed; see [web/lib/score.ts](web/lib/score.ts). The visual direction is written down in [DESIGN.md](DESIGN.md).
 
 ## Sample data
 
-The dashboard reads two files in [sample-data](sample-data):
+The site reads two files in [sample-data](sample-data) at build time:
 
 - `demo-findings.json`: a fictional company's account. [generate_demo.py](sample-data/generate_demo.py) builds it by running the real scanner against mocked AWS, so every check has something to show without paying for RDS instances or load balancers.
 - `findings.json`: a scan of this project's own AWS account, scrubbed. The misconfigured resources in it are created on purpose by [infra/bait](infra/bait).
@@ -79,4 +118,10 @@ The dashboard reads two files in [sample-data](sample-data):
 pytest
 ```
 
-Tests run against [moto](https://github.com/getmoto/moto), which mocks AWS in memory. They never touch a real account.
+Tests run against [moto](https://github.com/getmoto/moto), which mocks AWS in memory. They never touch a real account. GitHub Actions runs them on every push, along with a lint of the role template and the site's lint, type-check and build.
+
+## Cost
+
+The project is built to cost well under a dollar a month. The scanner makes only free read calls and never uses the Cost Explorer API, which is billed per request. Checks for expensive resources (RDS, load balancers, Elastic IPs) are tested against mocked AWS instead of real ones.
+
+Pillarscan is an independent project and is not affiliated with, endorsed by or sponsored by Amazon.

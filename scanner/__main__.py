@@ -1,4 +1,8 @@
-"""CLI entry point: python -m scanner --profile <name> --out findings.json"""
+"""CLI entry point.
+
+    python -m scanner --profile <name> --out findings.json
+    python -m scanner --profile <name> --role-arn <arn> --external-id <id>
+"""
 
 from __future__ import annotations
 
@@ -15,6 +19,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from scanner.engine import ScanResult, run_scan
 from scanner.findings import Severity, Status
+from scanner.session import assume_role_session
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -28,7 +33,18 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--regions",
         help="comma-separated regions for regional checks (default: every region enabled in the account)",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--role-arn",
+        help="read-only audit role to assume before scanning (see onboarding/)",
+    )
+    parser.add_argument(
+        "--external-id",
+        help="external ID the audit role's trust policy expects; required with --role-arn",
+    )
+    args = parser.parse_args(argv)
+    if bool(args.role_arn) != bool(args.external_id):
+        parser.error("--role-arn and --external-id must be given together")
+    return args
 
 
 def print_summary(result: ScanResult, out: Path) -> None:
@@ -54,9 +70,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         session = boto3.Session(profile_name=args.profile)
+        if args.role_arn:
+            session = assume_role_session(session, args.role_arn, args.external_id)
         result = run_scan(session, regions=regions)
     except (BotoCoreError, ClientError) as exc:
-        # Raised before any check runs: missing profile, no or expired credentials.
+        # Raised before any check runs: missing profile, expired credentials,
+        # or a role that could not be assumed.
         print(f"Could not start the scan: {exc}", file=sys.stderr)
         return 2
 
