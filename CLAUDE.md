@@ -118,11 +118,14 @@ Each stage must leave something showable. Do not start a later stage before the 
 - Repo: `github.com/Asiwomex/Pillarscan`. Python uses `pip` + `venv` (`.venv/`, Python 3.13 locally); `uv` is not installed.
 - Stage 1 code is complete: findings schema (`scanner/findings.py`), check contract (`scanner/check.py`), engine and CLI, and all 22 checks in `scanner/checks/`, each with moto tests in `tests/scanner/` (run `pytest`). moto cannot model root MFA or Lambda dead-letter config, so those two pass cases use a botocore `Stubber`.
 - The CLI writes `{"scan": {...metadata}, "findings": [...]}`; each finding follows the schema above.
-- The scanner has not been run against the real account yet.
+- AWS access: CLI profile `pillarscan` (short-lived `aws login` credentials, which is why `botocore[crt]` is a dev dependency), default region `us-east-1`. Root and the IAM admin user both have MFA.
+- First real scan done: 22 checks across 17 regions in under a minute, no errors.
+- Bait lives in `infra/bait/` (Terraform, local git-ignored state, run with `AWS_PROFILE=pillarscan`): an empty bucket without a public access block, an unattached security group open on 22/3389, a 1 GB gp2 volume, and `pillarscan-bait-user` (no password, so not yet flagged).
+- `python -m scanner.scrub findings.json sample-data/findings.json` produces the demo data; `sample-data/findings.json` exists (59 findings, 40 failing).
 - AWS: the owner has one account and has just created an IAM admin user to use instead of root. MFA on root and on the IAM user may not be set up yet; ask before assuming.
 - The console appeared to be set to `us-east-2`; confirm the default region with the owner.
 - Development machine is Windows. Prefer commands that work in PowerShell or Git Bash, and say which.
-- **Next step: finish stage 1 against real AWS.** Needs the owner: a working CLI profile, the default region, and MFA status. Then a first real scan, cheap bait resources (ask first), and a scrubbed `sample-data/` file. After that, stage 2.
+- **Next step: stage 2**, the dashboard on `sample-data/findings.json`. Open question for the owner: the real account only exercises 9 of the 22 checks, so decide whether demo data should be topped up with clearly labelled synthetic findings for the rest (RDS, load balancers, Elastic IPs and so on).
 
 ## Rules
 

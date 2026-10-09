@@ -13,6 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # Lets boto3 read the short-lived credentials that `aws login` creates.
+    "botocore[crt]",
     "pytest>=8",
     "moto[autoscaling,awslambda,cloudtrail,dynamodb,ec2,elbv2,guardduty,iam,logs,rds,s3,s3control,sts]>=5",
 ]

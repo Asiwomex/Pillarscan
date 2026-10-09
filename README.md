@@ -17,7 +17,11 @@ python -m scanner --profile <aws-profile> --out findings.json
 
 The scanner only calls read APIs (`Get*`, `List*`, `Describe*`). The `SecurityAudit` and `ViewOnlyAccess` managed policies are enough to run it.
 
-`findings.json` contains real account IDs and ARNs, so it is git-ignored.
+`findings.json` contains real account IDs and ARNs, so it is git-ignored. To publish a scan as demo data, scrub it first:
+
+```powershell
+python -m scanner.scrub findings.json sample-data/findings.json
+```
 
 ## Checks
 
