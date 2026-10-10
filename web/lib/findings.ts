@@ -90,3 +90,22 @@ export function bySeverity(a: Finding, b: Finding): number {
     SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity)
   );
 }
+
+/** One row of the findings table: a finding and every region it was found in. */
+export type FindingGroup = { finding: Finding; regions: string[] };
+
+/**
+ * Merge findings that are the same check with the same result on the same
+ * resource. That only happens for account-wide settings checked region by
+ * region, such as GuardDuty, where 17 identical rows would bury the rest.
+ */
+export function groupAcrossRegions(findings: Finding[]): FindingGroup[] {
+  const groups = new Map<string, FindingGroup>();
+  for (const finding of findings) {
+    const key = `${finding.check_id}|${finding.status}|${finding.resource_arn}`;
+    const group = groups.get(key);
+    if (group) group.regions.push(finding.region);
+    else groups.set(key, { finding, regions: [finding.region] });
+  }
+  return [...groups.values()];
+}

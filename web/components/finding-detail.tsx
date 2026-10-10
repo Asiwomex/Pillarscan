@@ -44,10 +44,13 @@ function Fact({ label, mono, children }: { label: string; mono?: boolean; childr
 
 export function FindingDetail({
   finding,
+  regions,
   open,
   onOpenChange,
 }: {
   finding: Finding | null;
+  /** Every region this finding was found in; more than one for account-wide settings. */
+  regions: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -76,6 +79,12 @@ export function FindingDetail({
               <section>
                 <h3 className="mb-1.5 text-[0.8125rem] font-semibold">What was found</h3>
                 <p className="leading-relaxed text-pretty">{finding.description}</p>
+                {regions.length > 1 && (
+                  <p className="mt-2 text-pretty text-muted-ink">
+                    The same is true in {regions.length - 1} other{" "}
+                    {regions.length === 2 ? "region" : "regions"}, listed below.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg bg-sound-tint p-4">
@@ -95,8 +104,8 @@ export function FindingDetail({
                   <Fact label="Type" mono>
                     {finding.resource_type}
                   </Fact>
-                  <Fact label="Region" mono>
-                    {finding.region}
+                  <Fact label={regions.length > 1 ? `${regions.length} regions` : "Region"} mono>
+                    {regions.length > 1 ? regions.join(", ") : finding.region}
                   </Fact>
                   <Fact label="Account" mono>
                     {finding.account_id}

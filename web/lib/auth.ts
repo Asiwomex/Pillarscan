@@ -6,6 +6,8 @@
 // (the "verifier") that never left it, so a code intercepted on the way
 // back is useless to anyone else.
 
+import { useSyncExternalStore } from "react";
+
 // Neither value is a secret. They say which sign-in page and which app.
 const COGNITO_DOMAIN =
   process.env.NEXT_PUBLIC_COGNITO_DOMAIN ??
@@ -144,4 +146,18 @@ export function signOut(): void {
   const query = new URLSearchParams({ client_id: CLIENT_ID, logout_uri: redirectUri() });
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(`${COGNITO_DOMAIN}/logout?${query}`);
+}
+
+const neverChanges = () => () => {};
+
+/**
+ * Whether someone is signed in, for parts of the page that only label
+ * things differently. The server always renders the signed-out wording.
+ */
+export function useSignedIn(): boolean {
+  return useSyncExternalStore(
+    neverChanges,
+    () => currentSession() !== null,
+    () => false,
+  );
 }

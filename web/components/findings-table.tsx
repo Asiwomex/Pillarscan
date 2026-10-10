@@ -17,7 +17,7 @@ import {
   STATUSES,
   resourceName,
   serviceOf,
-  type Finding,
+  type FindingGroup,
 } from "@/lib/findings";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
 });
 
-const helper = createColumnHelper<typeof features, Finding>();
+const helper = createColumnHelper<typeof features, FindingGroup>();
 
 function compare(a: string | number, b: string | number): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -36,20 +36,25 @@ function compare(a: string | number, b: string | number): number {
 const COLUMN_CLASS: Record<string, string> = {
   severity: "w-[5.5rem] sm:w-28",
   service: "hidden w-36 md:table-cell",
-  region: "hidden w-32 lg:table-cell",
+  region: "hidden w-40 lg:table-cell",
   status: "w-20 sm:w-32",
 };
 
-function buildColumns(onSelect: (finding: Finding) => void) {
+function regionLabel(group: FindingGroup): string {
+  return group.regions.length > 1 ? `${group.regions.length} regions` : group.regions[0];
+}
+
+function buildColumns(onSelect: (group: FindingGroup) => void) {
   return helper.columns([
     // Severity and status sort by rank, not alphabetically.
-    helper.accessor((finding) => SEVERITIES.indexOf(finding.severity), {
+    helper.accessor((group) => SEVERITIES.indexOf(group.finding.severity), {
       id: "severity",
       header: "Severity",
       sortFn: (a, b, id) => compare(a.getValue<number>(id), b.getValue<number>(id)),
-      cell: ({ row }) => <SeverityMark severity={row.original.severity} />,
+      cell: ({ row }) => <SeverityMark severity={row.original.finding.severity} />,
     }),
-    helper.accessor("title", {
+    helper.accessor((group) => group.finding.title, {
+      id: "title",
       header: "Finding",
       sortFn: (a, b, id) => compare(a.getValue<string>(id), b.getValue<string>(id)),
       cell: ({ row }) => (
@@ -59,46 +64,53 @@ function buildColumns(onSelect: (finding: Finding) => void) {
             onClick={() => onSelect(row.original)}
             className="text-left font-medium underline-offset-4 group-hover:underline"
           >
-            {row.original.title}
+            {row.original.finding.title}
           </button>
           <span className="mt-0.5 block font-mono text-xs break-all text-muted-ink">
-            {resourceName(row.original.resource_arn)}
+            {resourceName(row.original.finding.resource_arn)}
           </span>
         </>
       ),
     }),
-    helper.accessor((finding) => serviceOf(finding), {
+    helper.accessor((group) => serviceOf(group.finding), {
       id: "service",
       header: "Service",
       sortFn: (a, b, id) => compare(a.getValue<string>(id), b.getValue<string>(id)),
     }),
-    helper.accessor("region", {
+    helper.accessor((group) => regionLabel(group), {
+      id: "region",
       header: "Region",
       sortFn: (a, b, id) => compare(a.getValue<string>(id), b.getValue<string>(id)),
-      cell: ({ row }) => <span className="font-mono text-xs">{row.original.region}</span>,
+      cell: ({ row }) =>
+        row.original.regions.length > 1 ? (
+          // The same setting, found in several regions, is one row.
+          <span className="whitespace-nowrap">{regionLabel(row.original)}</span>
+        ) : (
+          <span className="font-mono text-xs whitespace-nowrap">{regionLabel(row.original)}</span>
+        ),
     }),
-    helper.accessor((finding) => STATUSES.indexOf(finding.status), {
+    helper.accessor((group) => STATUSES.indexOf(group.finding.status), {
       id: "status",
       header: "Status",
       sortFn: (a, b, id) => compare(a.getValue<number>(id), b.getValue<number>(id)),
-      cell: ({ row }) => <StatusMark status={row.original.status} />,
+      cell: ({ row }) => <StatusMark status={row.original.finding.status} />,
     }),
   ]);
 }
 
 export function FindingsTable({
-  findings,
+  groups,
   onSelect,
 }: {
-  findings: Finding[];
-  onSelect: (finding: Finding) => void;
+  groups: FindingGroup[];
+  onSelect: (group: FindingGroup) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "severity", desc: false }]);
   const columns = useMemo(() => buildColumns(onSelect), [onSelect]);
   const table = useTable({
     features,
     columns,
-    data: findings,
+    data: groups,
     state: { sorting },
     onSortingChange: setSorting,
   });

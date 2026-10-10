@@ -14,7 +14,9 @@ import {
   PILLAR_LABELS,
   SEVERITIES,
   SEVERITY_LABELS,
+  groupAcrossRegions,
   type Finding,
+  type FindingGroup,
   type Pillar,
   type Severity,
   type ScanReport,
@@ -141,7 +143,7 @@ export function Dashboard({
   const [scanId, setScanId] = useState(scans[0].id);
   const [live, setLive] = useState<Live>({ status: "idle", history: [], report: null });
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [selected, setSelected] = useState<Finding | null>(null);
+  const [selected, setSelected] = useState<FindingGroup | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
   const scan = scans.find((candidate) => candidate.id === scanId) ?? scans[0];
@@ -186,8 +188,16 @@ export function Dashboard({
     [findings, filters],
   );
 
+  const visibleGroups = useMemo(() => groupAcrossRegions(visible), [visible]);
+
+  const openGroup = useCallback((group: FindingGroup) => {
+    setSelected(group);
+    setDetailOpen(true);
+  }, []);
+
+  // A block in a pillar is always one finding in one region.
   const openDetail = useCallback((finding: Finding) => {
-    setSelected(finding);
+    setSelected({ finding, regions: [finding.region] });
     setDetailOpen(true);
   }, []);
 
@@ -415,7 +425,7 @@ export function Dashboard({
           </div>
 
           {visible.length > 0 ? (
-            <FindingsTable findings={visible} onSelect={openDetail} />
+            <FindingsTable groups={visibleGroups} onSelect={openGroup} />
           ) : (
             <div className="border-t border-line px-5 py-12 text-center">
               <p className="font-medium">No findings match these filters.</p>
@@ -434,7 +444,9 @@ export function Dashboard({
             aria-live="polite"
           >
             <span>
-              Showing {visible.length} of {findings.length}
+              Showing {visible.length} of {findings.length} findings
+              {visibleGroups.length < visible.length &&
+                `, with repeats across regions shown as one row (${visibleGroups.length} rows)`}
             </span>
             {filtered && (
               <button
@@ -449,7 +461,12 @@ export function Dashboard({
         </section>
       </div>
 
-      <FindingDetail finding={selected} open={detailOpen} onOpenChange={setDetailOpen} />
+      <FindingDetail
+        finding={selected?.finding ?? null}
+        regions={selected?.regions ?? []}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </div>
   );
 }
