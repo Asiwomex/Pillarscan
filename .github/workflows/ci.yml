@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   scanner:
-    name: Scanner tests (Python ${{ matrix.python }})
+    name: Scanner and API tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -40,6 +40,22 @@ jobs:
           python-version: "3.13"
       - run: pip install cfn-lint
       - run: cfn-lint onboarding/pillarscan-role.yaml
+
+  infra:
+    name: Terraform format and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra
+      # No backend and no credentials: this checks the configuration is
+      # well formed, not what it would change.
+      - name: Validate each configuration
+        run: |
+          for dir in infra/bootstrap infra/platform infra/bait; do
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
 
   web:
     name: Site lint and build

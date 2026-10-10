@@ -17,33 +17,39 @@ It is a portfolio project by [Asiwome Boateng](https://asiwomex.vercel.app/), no
 | Scanner: 22 checks, run from the command line | Built | [scanner](scanner) |
 | Tests: every check tested against mocked AWS | Built | [tests](tests) |
 | Read-only role template for the account being scanned | Built | [onboarding](onboarding) |
-| Site: landing page and dashboard on sample data | Built | [web](web) |
-| API and scan history | Planned | |
+| Site: landing page and dashboard, opening on sample data | Built | [web](web) |
+| Backend: a daily scan on Lambda, stored in DynamoDB, served by an API | Built | [infra/platform](infra/platform), [api](api) |
+| Scan history in the dashboard | Built | [web](web) |
 | Sign in and scan your own account from the browser | Planned | |
 
 ## How it fits together
 
 ```mermaid
 flowchart LR
+    schedule["Daily schedule<br/>EventBridge Scheduler"]
+    queue["Scan queue<br/>SQS + dead-letter queue"]
+    scanner["Scanner Lambda<br/>22 checks, all regions"]
+    table[("DynamoDB<br/>scans and findings")]
+    api["API Lambda<br/>FastAPI, read-only"]
+    gateway["API Gateway<br/>HTTP API, throttled"]
+    site["Next.js site<br/>static, on Vercel"]
+
     subgraph account["AWS account being scanned"]
         role["PillarscanAuditRole<br/>SecurityAudit + ViewOnlyAccess"]
         resources["S3, IAM, EC2, RDS, ..."]
         role -. "read-only API calls" .-> resources
     end
 
-    scanner["Scanner CLI<br/>22 checks, all regions in parallel"]
-    findings["findings.json"]
-    scrub["scrub"]
-    sample["sample-data/"]
-    site["Next.js site<br/>static, on Vercel"]
-
+    schedule --> queue --> scanner
     scanner -- "sts:AssumeRole + external ID" --> role
-    scanner --> findings --> scrub --> sample --> site
-
-    moto["moto (mocked AWS)"] -. "tests and demo data" .-> scanner
+    scanner -- "scrubbed scan" --> table
+    table --> api --> gateway --> site
+    sample["sample-data/<br/>demo scan"] --> site
 ```
 
-The scanner never calls a write API. The role it assumes carries two AWS managed policies, `SecurityAudit` and `ViewOnlyAccess`, and its trust policy only accepts the call when the scanner sends the agreed external ID.
+The scanner never calls a write API. The role it assumes carries two AWS managed policies, `SecurityAudit` and `ViewOnlyAccess`, and its trust policy only accepts the call when the scanner sends the agreed external ID. The scanner Lambda's own role cannot read the account at all: it can only take a message, read the external ID, assume the audit role and write the result.
+
+The API is public until sign-in exists, so scans are stored with the account ID, user names and resource IDs already replaced. The same scanner also runs from the command line.
 
 ## Run the scanner
 
@@ -97,6 +103,19 @@ python -m scanner.scrub findings.json sample-data/findings.json
 
 Each check is one file in [scanner/checks](scanner/checks), named after its `check_id`. A check that cannot run produces a finding with status `error` and the scan carries on. Checks run once per enabled region unless the service is global; pass `--regions us-east-1,us-east-2` to limit a scan.
 
+## Backend
+
+Terraform in [infra/platform](infra/platform) creates the queue, both Lambdas, the table, the API and two alarms. State is kept in an S3 bucket made by [infra/bootstrap](infra/bootstrap).
+
+```powershell
+python scripts/build_lambdas.py
+cd infra/platform
+terraform init -backend-config=backend.hcl
+terraform apply
+```
+
+The API has three routes: `GET /health`, `GET /scans` for the history, and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). It cannot write anything.
+
 ## Site
 
 A Next.js app in [web](web): a landing page with the dashboard embedded as the live demo. The dashboard shows a posture score, failed checks by service, one block per finding in each pillar, and a filterable table with a detail panel that explains each finding and how to fix it.
@@ -126,6 +145,6 @@ Tests run against [moto](https://github.com/getmoto/moto), which mocks AWS in me
 
 ## Cost
 
-The project is built to cost well under a dollar a month. The scanner makes only free read calls and never uses the Cost Explorer API, which is billed per request. Checks for expensive resources (RDS, load balancers, Elastic IPs) are tested against mocked AWS instead of real ones.
+The project is built to cost well under a dollar a month. The backend stays inside AWS's always-free allowances for Lambda, SQS, DynamoDB and CloudWatch alarms. The scanner makes only free read calls and never uses the Cost Explorer API, which is billed per request. Checks for expensive resources (RDS, load balancers, Elastic IPs) are tested against mocked AWS instead of real ones.
 
 Pillarscan is an independent project and is not affiliated with, endorsed by or sponsored by Amazon.

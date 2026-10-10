@@ -29,9 +29,11 @@ export function loadScans(): Scan[] {
     },
     {
       id: "real",
-      label: "Real account",
+      label: "Live account",
+      // Shown only if JavaScript is off; the dashboard swaps this scan for
+      // the latest one from the API as soon as it is opened.
       note:
-        "A scan of this project's own AWS account, with the account ID and resource IDs scrubbed. It is small on purpose: the account costs under a dollar a month.",
+        "A saved scan of this project's own AWS account, with the account ID and resource IDs replaced.",
       report: read("findings.json"),
     },
   ];

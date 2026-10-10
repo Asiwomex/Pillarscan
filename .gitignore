@@ -27,9 +27,13 @@ out/
 
 # Terraform
 .terraform/
+.build/
 *.tfstate
 *.tfstate.*
 *.tfvars
+# Names the state bucket, which is unique to one AWS account.
+backend.hcl
+*.tfplan
 !example.tfvars
 
 # OS / editor

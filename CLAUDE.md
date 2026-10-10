@@ -132,7 +132,18 @@ Each stage must leave something showable. Do not start a later stage before the 
 - CI is `.github/workflows/ci.yml`: pytest on Python 3.12 and 3.13, `cfn-lint` on the role template, and the site's lint and build (the build type-checks; a separate `tsc` step fails in CI because Next.js generates the `LayoutProps` global during the build). No AWS access in CI yet.
 - Live at https://pillarscan.lytaworks.com/ (primary) and https://pillarscan.vercel.app/. Vercel deploys every push to `main`, so a push is a production release.
 - Lighthouse, phone profile, on the live site on 2026-10-09: performance 77, accessibility 97. The chart library is now loaded only when the chart scrolls into view (`web/components/service-chart-frame.tsx`), which measured 95 / 100 on a local production build. Re-measure the live site after it deploys.
-- **Next step: stage 3**, the backend (Terraform for DynamoDB, both Lambdas, SQS and API Gateway; scan history in the dashboard). Ask before creating each AWS resource.
+- Stage 3 backend is applied and working (applied 2026-10-09). A scan requested through the queue lands in DynamoDB in about 20 seconds with no errors, and the API serves it. API base URL: https://kzowp5bd5l.execute-api.us-east-1.amazonaws.com (also the default in `web/lib/api.ts`). Pieces:
+  - `scanner/store.py`: DynamoDB single-table storage (summary item per scan under `ACCOUNT#<id>`, one item per finding under `SCAN#<id>`, 90-day TTL). `scanner/score.py` mirrors `web/lib/score.ts`; change both together.
+  - `scanner/lambda_handler.py`: scanner Lambda. Assumes the audit role with the external ID read from SSM, scans, scrubs (`SCRUB_OUTPUT=true`) and stores.
+  - `api/`: FastAPI on Lambda via Mangum, read-only: `GET /health`, `GET /scans`, `GET /scans/{scan_id}` (`latest` works). Public until stage 4, which is why stored scans are scrubbed and the API only serves account `000000000000`.
+  - `scripts/build_lambdas.py` builds `build/scanner` and `build/api` (Linux arm64 wheels) for Terraform to zip. Run it before `terraform plan`.
+  - `infra/bootstrap/` creates the state bucket (local state). `infra/platform/` is the platform, with an S3 backend whose bucket name comes from the git-ignored `infra/platform/backend.hcl`.
+  - Done by hand outside Terraform: the external ID is in SSM SecureString `/pillarscan/external-id`, and the `pillarscan-audit-role` stack now trusts the account root so the scanner Lambda's role can assume the role.
+  - Running Terraform here: its S3 backend cannot read `aws login` credentials, so export them first: `eval "$(aws configure export-credentials --profile pillarscan --format env)"` and unset `AWS_PROFILE`. In Git Bash set `MSYS_NO_PATHCONV=1` for AWS CLI arguments that start with `/`.
+  - `infra/platform/terraform.tfvars` (git-ignored) holds `alarm_email`. The owner must confirm the SNS subscription email before alarm emails arrive.
+  - The dashboard's "Live account" option loads `/scans` and `/scans/latest` when first opened and falls back to `sample-data/findings.json` if the API fails.
+  - Known rough edge: `lambda_dead_letter_queue` flags the platform's own two Lambdas, though one is fed by SQS (which has its own dead-letter queue) and the other is only called synchronously.
+- **Next step: stage 4**, the connect-account flow (Cognito sign-in, the role template hosted in S3, a "run scan" button). Ask before creating AWS resources.
 
 ## Rules
 

@@ -17,9 +17,11 @@ import {
   type Finding,
   type Pillar,
   type Severity,
+  type ScanReport,
   type Status,
 } from "@/lib/findings";
-import { formatTimestamp } from "@/lib/format";
+import { fetchHistory, fetchScan, type ScanSummary } from "@/lib/api";
+import { formatDay, formatTimestamp } from "@/lib/format";
 import type { Scan } from "@/lib/scans";
 import { countBySeverity, postureScore, summarisePillars, verdict } from "@/lib/score";
 import { cn } from "@/lib/utils";
@@ -111,15 +113,55 @@ function Select<T extends string>({
   );
 }
 
+// The scan that is read from the API instead of from a file.
+const LIVE_SCAN_ID = "real";
+
+// What the dashboard knows about the API. Until a live scan arrives, the
+// saved copy of the same account's scan is shown in its place.
+type Live =
+  | { status: "idle" | "loading" | "failed"; history: ScanSummary[]; report: null }
+  | { status: "ready"; history: ScanSummary[]; report: ScanReport };
+
+const LIVE_NOTE: Record<Live["status"], string> = {
+  idle: "",
+  loading: "Fetching the latest scan from the API. Until it arrives this is a saved copy.",
+  failed: "The API could not be reached, so this is a saved copy of an earlier scan.",
+  ready:
+    "This project's own AWS account, scanned every day by a Lambda function. Account and resource IDs are replaced before a scan is stored.",
+};
+
 export function Dashboard({ scans }: { scans: Scan[] }) {
   const [scanId, setScanId] = useState(scans[0].id);
+  const [live, setLive] = useState<Live>({ status: "idle", history: [], report: null });
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<Finding | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
   const scan = scans.find((candidate) => candidate.id === scanId) ?? scans[0];
-  const { findings } = scan.report;
-  const { regions, checks_run: checksRun, started_at: startedAt } = scan.report.scan;
+  const isLive = scan.id === LIVE_SCAN_ID;
+  const report = isLive && live.report ? live.report : scan.report;
+  const { findings } = report;
+  const { regions, checks_run: checksRun, started_at: startedAt } = report.scan;
+
+  async function loadLive(historyScanId?: string) {
+    setLive((current) => ({ status: "loading", history: current.history, report: null }));
+    try {
+      const [history, liveReport] = await Promise.all([
+        fetchHistory(),
+        fetchScan(historyScanId ?? "latest"),
+      ]);
+      setLive({ status: "ready", history, report: liveReport });
+    } catch {
+      setLive((current) => ({ status: "failed", history: current.history, report: null }));
+    }
+  }
+
+  function chooseScan(id: string) {
+    setScanId(id);
+    // Fetched the first time the live scan is opened, not on page load, so
+    // visitors who only look at the demo never call the API.
+    if (id === LIVE_SCAN_ID && live.status === "idle") void loadLive();
+  }
 
   const summary = useMemo(() => {
     const failed = findings.filter((finding) => finding.status === "fail");
@@ -160,15 +202,54 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
         <Segmented
           label="Scan"
           value={scan.id}
-          onChange={setScanId}
+          onChange={chooseScan}
           options={scans.map((option) => ({ value: option.id, label: option.label }))}
         />
       </div>
 
       <div className="px-4 pt-5 pb-6 sm:px-6">
         <p className="mb-4 max-w-3xl text-[0.8125rem] text-pretty text-muted-ink">
-          <span className="font-medium text-ink">{scan.label}.</span> {scan.note}
+          <span className="font-medium text-ink">{scan.label}.</span>{" "}
+          <span aria-live="polite">{isLive ? LIVE_NOTE[live.status] : scan.note}</span>
+          {isLive && live.status === "failed" && (
+            <button
+              type="button"
+              onClick={() => void loadLive()}
+              className="ml-2 font-medium text-sound underline-offset-4 hover:underline"
+            >
+              Try again
+            </button>
+          )}
         </p>
+
+        {isLive && live.history.length > 0 && (
+          <div className="mb-4 flex items-center gap-3">
+            <h3 className="shrink-0 text-[0.8125rem] font-medium text-muted-ink">History</h3>
+            {/* Scrolls sideways on its own, so a long history never widens the page. */}
+            <ul className="flex gap-1.5 overflow-x-auto pb-1">
+              {live.history.map((entry) => {
+                const current = live.report?.scan.started_at === entry.started_at;
+                return (
+                  <li key={entry.scan_id} className="shrink-0">
+                    <button
+                      type="button"
+                      aria-pressed={current}
+                      onClick={() => void loadLive(entry.scan_id)}
+                      className={cn(
+                        CONTROL,
+                        "flex items-center gap-2",
+                        current && "border-ink hover:border-ink",
+                      )}
+                    >
+                      {formatDay(entry.started_at)}
+                      <span className="font-semibold">{entry.score ?? "n/a"}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-12">
           <section aria-labelledby="score-heading" className="panel p-5 lg:col-span-5">
@@ -243,7 +324,7 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
         </div>
 
         {/* Keyed by scan so the sweep replays when the scan is switched. */}
-        <div key={scan.id} className="mt-4 grid gap-4 md:grid-cols-3">
+        <div key={`${scan.id}:${startedAt}`} className="mt-4 grid gap-4 md:grid-cols-3">
           {summary.pillars.map((pillar) => (
             <PillarBlocks
               key={pillar.pillar}

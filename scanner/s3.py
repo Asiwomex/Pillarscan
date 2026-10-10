@@ -7,7 +7,13 @@ from typing import Any
 
 
 def bucket_names(s3: Any) -> Iterator[str]:
-    for page in s3.get_paginator("list_buckets").paginate():
+    # ListBuckets only became a paginated API in late 2024. The boto3 inside
+    # the Lambda runtime can be older than that, so fall back to one call.
+    if s3.can_paginate("list_buckets"):
+        pages = s3.get_paginator("list_buckets").paginate()
+    else:
+        pages = [s3.list_buckets()]
+    for page in pages:
         for bucket in page.get("Buckets", []):
             yield bucket["Name"]
 

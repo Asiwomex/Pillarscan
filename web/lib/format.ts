@@ -12,3 +12,16 @@ const TIMESTAMP = new Intl.DateTimeFormat("en-GB", {
 export function formatTimestamp(iso: string): string {
   return `${TIMESTAMP.format(new Date(iso))} UTC`;
 }
+
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+
+/** A short label for a scan in the history list: "9 Oct, 23:51". */
+export function formatDay(iso: string): string {
+  return DAY.format(new Date(iso));
+}

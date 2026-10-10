@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import boto3
 import pytest
-from moto import mock_aws
 
 from scanner.check import GLOBAL_REGION, CheckContext
 
@@ -13,18 +12,6 @@ from scanner.check import GLOBAL_REGION, CheckContext
 MOTO_ACCOUNT_ID = "123456789012"
 
 ContextFactory = Callable[..., CheckContext]
-
-
-@pytest.fixture(autouse=True)
-def aws(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Mock AWS for every test and make sure real credentials are never used."""
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    with mock_aws():
-        yield
 
 
 @pytest.fixture
