@@ -175,3 +175,58 @@ def test_a_users_scans_are_not_in_the_public_list(
     assert client.get("/scans").json() == {"scans": []}
     scan = client.get(f"/me/accounts/{AWS_ACCOUNT}/scans/latest").json()
     assert scan["scan"]["scan_id"] == "20261009T060000Z"
+
+
+def test_disconnecting_removes_the_account_and_its_scans(
+    signed_in: tuple[TestClient, list[dict[str, str]], dict[str, str]], table: Any
+) -> None:
+    client, _, _ = signed_in
+    client.post("/me/accounts", json={"aws_account_id": AWS_ACCOUNT})
+    store = ScanStore(table)
+    for day in ("08", "09"):
+        store.put_scan(
+            make_report(f"2026-10-{day}T06:00:00Z", [("fail", "high"), ("pass", "low")]),
+            owner=tenant_key("user-1", AWS_ACCOUNT),
+        )
+    # A public scan, which must survive.
+    store.put_scan(make_report("2026-10-09T07:00:00Z", [("pass", "low")]))
+
+    response = client.delete(f"/me/accounts/{AWS_ACCOUNT}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scans_deleted"] == 2
+    assert body["stack_name"].startswith("pillarscan-audit-role-")
+    assert client.get("/me/accounts").json() == {"accounts": []}
+    assert store.list_scans(tenant_key("user-1", AWS_ACCOUNT)) == []
+    # Only the public scan's two items are left in the table.
+    assert len(table.scan()["Items"]) == 2
+    assert len(client.get("/scans").json()["scans"]) == 1
+
+
+def test_connecting_again_after_disconnecting_starts_fresh(
+    signed_in: tuple[TestClient, list[dict[str, str]], dict[str, str]],
+) -> None:
+    client, _, _ = signed_in
+    first = client.post("/me/accounts", json={"aws_account_id": AWS_ACCOUNT}).json()
+    client.delete(f"/me/accounts/{AWS_ACCOUNT}")
+
+    second = client.post("/me/accounts", json={"aws_account_id": AWS_ACCOUNT}).json()
+
+    # A new role name and external ID, so the old role is no use to anyone.
+    assert second["role_arn"] != first["role_arn"]
+    assert second["launch_url"] != first["launch_url"]
+    assert second["status"] == "pending"
+
+
+def test_a_user_cannot_disconnect_someone_elses_account(
+    signed_in: tuple[TestClient, list[dict[str, str]], dict[str, str]],
+) -> None:
+    client, _, who = signed_in
+    client.post("/me/accounts", json={"aws_account_id": AWS_ACCOUNT})
+
+    who["user"] = "user-2"
+    assert client.delete(f"/me/accounts/{AWS_ACCOUNT}").status_code == 404
+
+    who["user"] = "user-1"
+    assert len(client.get("/me/accounts").json()["accounts"]) == 1

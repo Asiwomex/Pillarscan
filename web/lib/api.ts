@@ -52,7 +52,12 @@ export type ConnectedAccount = {
 /** Thrown when the API refuses the token, which means the session has ended. */
 export class SignedOutError extends Error {}
 
-async function send<T>(token: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function send<T>(
+  token: string,
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
@@ -100,4 +105,17 @@ export function fetchAccountScan(
   scanId: string,
 ): Promise<ScanReport> {
   return send<ScanReport>(token, "GET", `/me/accounts/${awsAccountId}/scans/${scanId}`);
+}
+
+/**
+ * Forget a connected account and delete its scans. Returns the name of the
+ * CloudFormation stack that still holds its role, for the user to delete.
+ */
+export async function disconnectAccount(token: string, awsAccountId: string): Promise<string> {
+  const result = await send<{ stack_name: string }>(
+    token,
+    "DELETE",
+    `/me/accounts/${awsAccountId}`,
+  );
+  return result.stack_name;
 }

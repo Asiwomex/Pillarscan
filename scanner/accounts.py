@@ -111,6 +111,10 @@ class AccountStore:
             return existing
         return account
 
+    def disconnect(self, user_id: str, aws_account_id: str) -> None:
+        """Forget a connected account. Its role in AWS is left for the owner to delete."""
+        self._table.delete_item(Key=self._key(user_id, aws_account_id))
+
     def mark_scan_requested(self, user_id: str, aws_account_id: str) -> None:
         """Record a scan request, refusing one that follows too closely."""
         now = datetime.now(timezone.utc)

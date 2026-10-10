@@ -160,6 +160,31 @@ class ScanStore:
             findings = self._findings(f"SCAN#{summary['scan_id']}")
         return {"scan": summary, "findings": findings}
 
+    def delete_scans(self, owner: str) -> int:
+        """Delete every scan an owner has, findings included. Returns how many."""
+        summaries = self._keys(f"ACCOUNT#{owner}")
+        with self._table.batch_writer() as batch:
+            for summary in summaries:
+                scan_id = summary["SK"].removeprefix("SCAN#")
+                for key in self._keys(f"SCAN#{owner}#{scan_id}"):
+                    batch.delete_item(Key=key)
+                batch.delete_item(Key=summary)
+        return len(summaries)
+
+    def _keys(self, partition: str) -> list[dict[str, str]]:
+        """The keys of every item in a partition, without reading the items."""
+        keys: list[dict[str, str]] = []
+        query: dict[str, Any] = {
+            "KeyConditionExpression": Key("PK").eq(partition),
+            "ProjectionExpression": "PK, SK",
+        }
+        while True:
+            page = self._table.query(**query)
+            keys.extend(page["Items"])
+            if "LastEvaluatedKey" not in page:
+                return keys
+            query["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
     def _findings(self, partition: str) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
         query: dict[str, Any] = {"KeyConditionExpression": Key("PK").eq(partition)}

@@ -8,6 +8,7 @@ import { Dashboard } from "@/components/dashboard";
 import {
   SignedOutError,
   connectAccount,
+  disconnectAccount,
   fetchAccountHistory,
   fetchAccountScan,
   fetchAccounts,
@@ -142,6 +143,8 @@ export function AccountApp() {
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Viewing | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // Name of the role stack left behind by the last disconnect, if any.
+  const [disconnected, setDisconnected] = useState<string | null>(null);
   const results = useRef<HTMLDivElement>(null);
 
   /** Turn any failed API call into the right message, or a sign-out. */
@@ -188,6 +191,7 @@ export function AccountApp() {
   async function connect(accountId: string) {
     try {
       const account = await connectAccount(token, accountId);
+      setDisconnected(null);
       setAccounts((current) => [
         ...(current ?? []).filter((other) => other.aws_account_id !== accountId),
         account,
@@ -208,6 +212,22 @@ export function AccountApp() {
       setViewing({ accountId, history, report });
       // Wait for the results to be on the page before scrolling to them.
       requestAnimationFrame(() => results.current?.scrollIntoView({ block: "start" }));
+    } catch (error) {
+      handle(error);
+    }
+  }
+
+  async function disconnect(accountId: string) {
+    setProblem(null);
+    try {
+      const stackName = await disconnectAccount(token, accountId);
+      setAccounts((current) =>
+        (current ?? []).filter((other) => other.aws_account_id !== accountId),
+      );
+      setViewing((current) => (current?.accountId === accountId ? null : current));
+      // Pillarscan has forgotten the account, but only its owner can take
+      // the role away. Say exactly what is left to delete.
+      setDisconnected(stackName);
     } catch (error) {
       handle(error);
     }
@@ -263,6 +283,15 @@ export function AccountApp() {
           </p>
         )}
 
+        {disconnected && (
+          <p className="rounded-md border border-line bg-surface p-3 text-pretty" role="status">
+            Account disconnected and its scans deleted. To remove Pillarscan&apos;s access
+            completely, delete the stack{" "}
+            <span className="font-mono text-[0.8125rem]">{disconnected}</span> in the
+            CloudFormation console of that AWS account.
+          </p>
+        )}
+
         {accounts === null ? (
           <p className="text-muted-ink">Loading your accounts.</p>
         ) : (
@@ -277,6 +306,7 @@ export function AccountApp() {
                     viewing={viewing?.accountId === account.aws_account_id}
                     onRunScan={() => void runScan(account.aws_account_id)}
                     onView={() => void view(account.aws_account_id)}
+                    onDisconnect={() => void disconnect(account.aws_account_id)}
                   />
                 ))}
               </ul>

@@ -61,6 +61,9 @@ data "aws_iam_policy_document" "api" {
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      # For disconnecting an account, which deletes the user's own scans.
+      "dynamodb:DeleteItem",
+      "dynamodb:BatchWriteItem",
     ]
     resources = [aws_dynamodb_table.scans.arn]
   }
@@ -86,7 +89,7 @@ resource "aws_apigatewayv2_api" "this" {
 
   cors_configuration {
     allow_origins = var.allowed_origins
-    allow_methods = ["GET", "POST"]
+    allow_methods = ["GET", "POST", "DELETE"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
@@ -127,6 +130,7 @@ resource "aws_apigatewayv2_route" "signed_in" {
   for_each = toset([
     "GET /me/accounts",
     "POST /me/accounts",
+    "DELETE /me/accounts/{aws_account_id}",
     "POST /me/accounts/{aws_account_id}/scans",
     "GET /me/accounts/{aws_account_id}/scans",
     "GET /me/accounts/{aws_account_id}/scans/{scan_id}",

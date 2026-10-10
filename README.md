@@ -116,7 +116,7 @@ terraform init -backend-config=backend.hcl
 terraform apply
 ```
 
-The public routes are `GET /health`, `GET /scans` for the history and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). The `/me/...` routes are for signed-in users: connect an account, request a scan and read your own scans.
+The public routes are `GET /health`, `GET /scans` for the history and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). The `/me/...` routes are for signed-in users: connect an account, request a scan, read your own scans and disconnect an account (which deletes its scans).
 
 ## Signing in and connecting an account
 

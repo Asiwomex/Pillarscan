@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 import type { ConnectedAccount } from "@/lib/api";
@@ -23,6 +24,7 @@ export function AccountPanel({
   viewing,
   onRunScan,
   onView,
+  onDisconnect,
 }: {
   account: ConnectedAccount;
   /** A scan was requested from this page and has not finished yet. */
@@ -30,7 +32,10 @@ export function AccountPanel({
   viewing: boolean;
   onRunScan: () => void;
   onView: () => void;
+  onDisconnect: () => void;
 }) {
+  // Disconnecting deletes scans and cannot be undone, so it asks first.
+  const [confirming, setConfirming] = useState(false);
   const scanning = busy || account.status === "scanning";
   const neverScanned = account.last_scan_id === null;
 
@@ -91,7 +96,38 @@ export function AccountPanel({
             {viewing ? "Showing results below" : "Show results"}
           </button>
         )}
+        {!confirming && (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={scanning}
+            className={cn(BUTTON, "ml-auto text-muted-ink hover:text-ink")}
+          >
+            Disconnect
+          </button>
+        )}
       </div>
+
+      {confirming && (
+        <div className="mt-4 rounded-md border border-line bg-page p-4" role="alertdialog" aria-label="Disconnect this account">
+          <p className="text-pretty">
+            Disconnect this account? Its scans stored here will be deleted. This cannot
+            be undone.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onDisconnect}
+              className={PRIMARY}
+            >
+              Disconnect and delete scans
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} className={SECONDARY}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

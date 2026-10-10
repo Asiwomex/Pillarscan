@@ -165,6 +165,24 @@ def connect_account(body: ConnectAccount, user: User, accounts: Accounts) -> dic
         ) from None
 
 
+@app.delete("/me/accounts/{aws_account_id}")
+def disconnect_account(
+    aws_account_id: AccountId, user: User, accounts: Accounts, store: Store
+) -> dict[str, Any]:
+    """Forget an account and delete the user's scans of it.
+
+    Pillarscan cannot delete the role in the user's AWS account, and should
+    not be able to. The response names the stack so they can remove it.
+    """
+    account = owned_account(user, aws_account_id, accounts)
+    deleted = store.delete_scans(tenant_key(user, aws_account_id))
+    accounts.disconnect(user, aws_account_id)
+    return {
+        "scans_deleted": deleted,
+        "stack_name": f"pillarscan-audit-role{account['role_name_suffix']}",
+    }
+
+
 @app.post("/me/accounts/{aws_account_id}/scans", status_code=202)
 def request_scan(
     aws_account_id: AccountId, user: User, accounts: Accounts, queue: ScanQueue
