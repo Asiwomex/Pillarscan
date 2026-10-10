@@ -26,6 +26,16 @@ variable "allowed_origins" {
   ]
 }
 
+variable "site_urls" {
+  description = "Addresses of the site. Cognito only sends people back to these after sign-in."
+  type        = list(string)
+  default = [
+    "https://pillarscan.lytaworks.com",
+    "https://pillarscan.vercel.app",
+    "http://localhost:3000",
+  ]
+}
+
 variable "scan_schedule" {
   description = "When the scheduled scan runs, as an EventBridge Scheduler expression (UTC)."
   type        = string

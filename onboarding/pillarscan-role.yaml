@@ -18,12 +18,19 @@ Parameters:
     MinLength: 16
     MaxLength: 128
     NoEcho: true
+  RoleNameSuffix:
+    Type: String
+    Description: >-
+      Added to the role's name, so that more than one Pillarscan role can
+      exist in the same account. Leave empty for a single role.
+    Default: ""
+    AllowedPattern: "^(-[a-z0-9]{1,16})?$"
 
 Resources:
   AuditRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: PillarscanAuditRole
+      RoleName: !Sub PillarscanAuditRole${RoleNameSuffix}
       Description: Read-only access for Pillarscan posture scans.
       # One hour is the shortest a role session can be capped at; a scan
       # takes about a minute.

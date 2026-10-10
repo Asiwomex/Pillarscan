@@ -55,9 +55,6 @@ resource "aws_lambda_function" "scanner" {
       TABLE_NAME            = aws_dynamodb_table.scans.name
       AUDIT_ROLE_ARN        = local.audit_role_arn
       EXTERNAL_ID_PARAMETER = var.external_id_parameter
-      # The API is public until sign-in exists, so scans are stored with
-      # the account ID and resource IDs already replaced.
-      SCRUB_OUTPUT = "true"
     }
   }
 
@@ -108,8 +105,13 @@ data "aws_iam_policy_document" "scanner" {
   }
 
   statement {
-    sid       = "StoreScans"
-    actions   = ["dynamodb:BatchWriteItem", "dynamodb:PutItem"]
+    sid = "StoreScansAndReadConnectedAccounts"
+    actions = [
+      "dynamodb:BatchWriteItem",
+      "dynamodb:PutItem",
+      "dynamodb:GetItem",
+      "dynamodb:UpdateItem",
+    ]
     resources = [aws_dynamodb_table.scans.arn]
   }
 
@@ -119,10 +121,13 @@ data "aws_iam_policy_document" "scanner" {
     resources = [local.external_id_parameter_arn]
   }
 
+  # Audit roles in any account, but only ones with this name. Each of those
+  # roles decides for itself whether to let this function in, by checking
+  # the caller and the external ID.
   statement {
-    sid       = "AssumeAuditRole"
+    sid       = "AssumeAuditRoles"
     actions   = ["sts:AssumeRole"]
-    resources = [local.audit_role_arn]
+    resources = ["arn:aws:iam::*:role/${var.audit_role_name}*"]
   }
 }
 

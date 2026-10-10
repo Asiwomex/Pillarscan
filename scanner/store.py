@@ -1,12 +1,17 @@
 """Scans stored in DynamoDB, in one table.
 
-Two kinds of item share the table:
+Two kinds of item hold scans:
 
-    PK = ACCOUNT#<account_id>   SK = SCAN#<scan_id>        one summary per scan
-    PK = SCAN#<scan_id>         SK = FINDING#<00042>       one item per finding
+    PK = ACCOUNT#<owner>           SK = SCAN#<scan_id>      one summary per scan
+    PK = SCAN#<owner>#<scan_id>    SK = FINDING#<00042>     one item per finding
+
+The owner says whose scans these are. For the public scans it is the
+scrubbed account ID, 000000000000. For a signed-in user's scans it is that
+user and account together (see scanner/accounts.py), so one user can never
+read another's.
 
 Scan IDs are the scan's start time (20261009T221200Z), so they sort by
-time. That makes "the latest scans for an account" a single query on the
+time. That makes "the latest scans for an owner" a single query on the
 first key, newest first, and "every finding of a scan" a single query on
 the second. Nothing ever needs a table scan.
 """
@@ -86,9 +91,14 @@ class ScanStore:
     def from_env(cls) -> ScanStore:
         return cls(boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"]))
 
-    def put_scan(self, report: dict[str, Any]) -> str:
-        """Store a scan report as written by the scanner. Returns its scan ID."""
+    def put_scan(self, report: dict[str, Any], owner: str | None = None) -> str:
+        """Store a scan report as written by the scanner. Returns its scan ID.
+
+        Without an owner the scan is filed under its own account ID, which
+        is how the public, scrubbed scans are stored.
+        """
         summary = summarise(report)
+        owner = owner or summary["account_id"]
         scan_id: str = summary["scan_id"]
         # DynamoDB deletes items once this time has passed, so the table
         # cannot grow without limit.
@@ -101,7 +111,7 @@ class ScanStore:
                 batch.put_item(
                     Item={
                         **finding,
-                        "PK": f"SCAN#{scan_id}",
+                        "PK": f"SCAN#{owner}#{scan_id}",
                         "SK": f"FINDING#{index:05d}",
                         "expires_at": expires_at,
                     }
@@ -111,51 +121,55 @@ class ScanStore:
             batch.put_item(
                 Item={
                     **summary,
-                    "PK": f"ACCOUNT#{summary['account_id']}",
+                    "PK": f"ACCOUNT#{owner}",
                     "SK": f"SCAN#{scan_id}",
                     "expires_at": expires_at,
                 }
             )
         return scan_id
 
-    def list_scans(self, account_id: str, limit: int = 30) -> list[dict[str, Any]]:
-        """Scan summaries for an account, newest first."""
+    def list_scans(self, owner: str, limit: int = 30) -> list[dict[str, Any]]:
+        """Scan summaries for an owner, newest first."""
         response = self._table.query(
-            KeyConditionExpression=Key("PK").eq(f"ACCOUNT#{account_id}")
+            KeyConditionExpression=Key("PK").eq(f"ACCOUNT#{owner}")
             & Key("SK").begins_with("SCAN#"),
             ScanIndexForward=False,
             Limit=limit,
         )
         return [self._summary(item) for item in response["Items"]]
 
-    def get_scan(self, account_id: str, scan_id: str) -> dict[str, Any] | None:
+    def get_scan(self, owner: str, scan_id: str) -> dict[str, Any] | None:
         """One scan in the shape the scanner writes, or None if it is unknown."""
         if scan_id == "latest":
-            latest = self.list_scans(account_id, limit=1)
+            latest = self.list_scans(owner, limit=1)
             if not latest:
                 return None
             summary = latest[0]
         else:
             response = self._table.get_item(
-                Key={"PK": f"ACCOUNT#{account_id}", "SK": f"SCAN#{scan_id}"}
+                Key={"PK": f"ACCOUNT#{owner}", "SK": f"SCAN#{scan_id}"}
             )
             if "Item" not in response:
                 return None
             summary = self._summary(response["Item"])
 
+        findings = self._findings(f"SCAN#{owner}#{summary['scan_id']}")
+        if not findings:
+            # Scans stored before owners existed used this shorter key.
+            # They expire on their own 90 days after 2026-10-10.
+            findings = self._findings(f"SCAN#{summary['scan_id']}")
+        return {"scan": summary, "findings": findings}
+
+    def _findings(self, partition: str) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
-        query: dict[str, Any] = {
-            "KeyConditionExpression": Key("PK").eq(f"SCAN#{summary['scan_id']}")
-        }
+        query: dict[str, Any] = {"KeyConditionExpression": Key("PK").eq(partition)}
         # A query returns at most 1 MB per call; keep going until it is done.
         while True:
             page = self._table.query(**query)
             findings.extend(self._finding(item) for item in page["Items"])
             if "LastEvaluatedKey" not in page:
-                break
+                return findings
             query["ExclusiveStartKey"] = page["LastEvaluatedKey"]
-
-        return {"scan": summary, "findings": findings}
 
     @staticmethod
     def _summary(item: dict[str, Any]) -> dict[str, Any]:

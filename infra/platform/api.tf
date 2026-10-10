@@ -11,7 +11,7 @@ resource "aws_cloudwatch_log_group" "api" {
 
 resource "aws_lambda_function" "api" {
   function_name = "pillarscan-api"
-  description   = "Read-only HTTP API over stored scans (FastAPI)."
+  description   = "HTTP API over stored scans and connected accounts (FastAPI)."
 
   role          = aws_iam_role.api.arn
   runtime       = local.lambda_runtime
@@ -30,14 +30,18 @@ resource "aws_lambda_function" "api" {
       # Stored scans are scrubbed, so this placeholder is the only account
       # the API has anything for.
       PILLARSCAN_ACCOUNT_ID = "000000000000"
+      SCAN_QUEUE_URL        = aws_sqs_queue.scan_requests.url
+      SCANNER_ROLE_ARN      = aws_iam_role.scanner.arn
+      ROLE_TEMPLATE_URL     = "https://${aws_s3_bucket.onboarding.bucket_regional_domain_name}/${aws_s3_object.role_template.key}"
     }
   }
 
   depends_on = [aws_cloudwatch_log_group.api]
 }
 
-# The API can read scans and write its own logs. It cannot write to the
-# table, start a scan or assume any role.
+# The API can read scans, keep the list of connected accounts and put a
+# scan request on the queue. It cannot assume any role, so it can never
+# look inside an AWS account itself.
 resource "aws_iam_role" "api" {
   name               = "pillarscan-api"
   assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
@@ -51,9 +55,20 @@ data "aws_iam_policy_document" "api" {
   }
 
   statement {
-    sid       = "ReadScans"
-    actions   = ["dynamodb:Query", "dynamodb:GetItem"]
+    sid = "ReadScansAndManageConnectedAccounts"
+    actions = [
+      "dynamodb:Query",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
     resources = [aws_dynamodb_table.scans.arn]
+  }
+
+  statement {
+    sid       = "RequestScans"
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.scan_requests.arn]
   }
 }
 
@@ -71,7 +86,8 @@ resource "aws_apigatewayv2_api" "this" {
 
   cors_configuration {
     allow_origins = var.allowed_origins
-    allow_methods = ["GET"]
+    allow_methods = ["GET", "POST"]
+    allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
 }
@@ -91,6 +107,36 @@ resource "aws_apigatewayv2_route" "api" {
   api_id    = aws_apigatewayv2_api.this.id
   route_key = each.value
   target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
+# Routes for signed-in users. API Gateway checks the Cognito token itself
+# and turns away anything without a valid one before the function runs.
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.this.id
+  name             = "cognito"
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+
+  jwt_configuration {
+    issuer   = "https://${aws_cognito_user_pool.this.endpoint}"
+    audience = [aws_cognito_user_pool_client.site.id]
+  }
+}
+
+resource "aws_apigatewayv2_route" "signed_in" {
+  for_each = toset([
+    "GET /me/accounts",
+    "POST /me/accounts",
+    "POST /me/accounts/{aws_account_id}/scans",
+    "GET /me/accounts/{aws_account_id}/scans",
+    "GET /me/accounts/{aws_account_id}/scans/{scan_id}",
+  ])
+
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = each.value
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 resource "aws_cloudwatch_log_group" "api_access" {
