@@ -86,3 +86,70 @@ def test_passes_with_a_dead_letter_queue(
         findings = list(lambda_dead_letter_queue.run(make_ctx(region=REGION)))
 
     assert [(f.status, f.resource_arn) for f in findings] == [(Status.PASS, arn)]
+
+
+def _queue_arn(name: str) -> str:
+    sqs = boto3.client("sqs", region_name=REGION)
+    url = sqs.create_queue(QueueName=name)["QueueUrl"]
+    arn: str = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
+    return arn
+
+
+def _allow_service(function_name: str, service: str) -> None:
+    boto3.client("lambda", region_name=REGION).add_permission(
+        FunctionName=function_name,
+        StatementId=service.split(".")[0],
+        Action="lambda:InvokeFunction",
+        Principal=service,
+    )
+
+
+def test_passes_with_an_on_failure_destination(make_ctx: ContextFactory) -> None:
+    arn = _create_function("with-destination")
+    boto3.client("lambda", region_name=REGION).put_function_event_invoke_config(
+        FunctionName="with-destination",
+        DestinationConfig={"OnFailure": {"Destination": _queue_arn("failures")}},
+    )
+
+    findings = list(lambda_dead_letter_queue.run(make_ctx(region=REGION)))
+
+    assert [(f.status, f.resource_arn) for f in findings] == [(Status.PASS, arn)]
+
+
+def test_fails_for_a_function_invoked_by_an_asynchronous_service(
+    make_ctx: ContextFactory,
+) -> None:
+    arn = _create_function("on-upload")
+    _allow_service("on-upload", "s3.amazonaws.com")
+
+    findings = list(lambda_dead_letter_queue.run(make_ctx(region=REGION)))
+
+    assert [(f.status, f.resource_arn) for f in findings] == [(Status.FAIL, arn)]
+
+
+def test_leaves_out_a_function_only_called_synchronously(make_ctx: ContextFactory) -> None:
+    _create_function("behind-api")
+    _allow_service("behind-api", "apigateway.amazonaws.com")
+
+    assert list(lambda_dead_letter_queue.run(make_ctx(region=REGION))) == []
+
+
+def test_still_checks_a_function_with_both_kinds_of_caller(make_ctx: ContextFactory) -> None:
+    arn = _create_function("mixed")
+    _allow_service("mixed", "apigateway.amazonaws.com")
+    _allow_service("mixed", "sns.amazonaws.com")
+
+    findings = list(lambda_dead_letter_queue.run(make_ctx(region=REGION)))
+
+    assert [(f.status, f.resource_arn) for f in findings] == [(Status.FAIL, arn)]
+
+
+def test_leaves_out_a_function_that_reads_from_a_queue(make_ctx: ContextFactory) -> None:
+    _create_function("queue-worker")
+    boto3.client("lambda", region_name=REGION).create_event_source_mapping(
+        EventSourceArn=_queue_arn("work"), FunctionName="queue-worker"
+    )
+
+    assert list(lambda_dead_letter_queue.run(make_ctx(region=REGION))) == []

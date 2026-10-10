@@ -6,7 +6,7 @@ A self-service AWS posture review tool: it scans an AWS account with read-only a
 
 - This is a **portfolio project**, not a business. The owner will record videos of it and show it to recruiters.
 - Priorities, in order: (1) a live demo anyone can open without an AWS account, (2) clean, readable code that shows cloud and security understanding, (3) a clear README with an architecture diagram.
-- Working name is **Pillarscan**. A web search found no existing product with that name. Domain and social handles have NOT been checked yet (owner to check `pillarscan.dev` / `pillarscan.io`).
+- The name is **Pillarscan** and the site's permanent address is https://pillarscan.lytaworks.com/ (owner's decision, 2026-10-10). No separate domain will be bought.
 - Do not put "AWS" in the product name, and do not copy Refraxion's branding or visual design.
 
 ## Decisions already made (do not reopen without asking)
@@ -142,7 +142,9 @@ Each stage must leave something showable. Do not start a later stage before the 
   - Running Terraform here: its S3 backend cannot read `aws login` credentials, so export them first: `eval "$(aws configure export-credentials --profile pillarscan --format env)"` and unset `AWS_PROFILE`. In Git Bash set `MSYS_NO_PATHCONV=1` for AWS CLI arguments that start with `/`.
   - `infra/platform/terraform.tfvars` (git-ignored) holds `alarm_email`. The owner must confirm the SNS subscription email before alarm emails arrive.
   - The dashboard's "Live account" option loads `/scans` and `/scans/latest` when first opened and falls back to `sample-data/findings.json` if the API fails.
-  - Known rough edge: `lambda_dead_letter_queue` flags the platform's own two Lambdas, though one is fed by SQS (which has its own dead-letter queue) and the other is only called synchronously.
+  - `lambda_dead_letter_queue` now accepts an on-failure destination and leaves out functions that are only called synchronously or that read from a queue or stream, so the platform no longer flags its own Lambdas. The deployed scanner Lambda needs a `terraform apply` to pick this up.
+  - The site has unit tests for the score formula (`pnpm test`, vitest), mirroring the Python cases.
+- Owner decisions (2026-10-10): no console password on the bait user (they do not want an MFA failure in the real scan); stage 4 sign-in is invite only (sign-up closed, the owner creates users).
 - **Next step: stage 4**, the connect-account flow (Cognito sign-in, the role template hosted in S3, a "run scan" button). Ask before creating AWS resources.
 
 ## Rules

@@ -302,16 +302,41 @@ def build_serverless() -> None:
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("handler.py", "def handler(event, context):\n    return None\n")
 
-    # moto does not model dead-letter config, so every demo function fails
-    # that check. The pass case is covered by the unit tests.
-    for name in ("image-thumbnailer", "nightly-export"):
-        client("lambda").create_function(
+    lambda_client = client("lambda")
+    for name in ("image-thumbnailer", "nightly-export", "orders-api"):
+        lambda_client.create_function(
             FunctionName=name,
             Runtime="python3.12",
             Role=role_arn,
             Handler="handler.handler",
             Code={"ZipFile": buffer.getvalue()},
         )
+
+    def allow(name: str, service: str) -> None:
+        lambda_client.add_permission(
+            FunctionName=name,
+            StatementId=service.split(".")[0],
+            Action="lambda:InvokeFunction",
+            Principal=service,
+        )
+
+    # Triggered by S3 uploads with nowhere for failures to go: fails the check.
+    allow("image-thumbnailer", "s3.amazonaws.com")
+
+    # Triggered on a schedule, with failures sent to a queue: passes.
+    allow("nightly-export", "events.amazonaws.com")
+    sqs = client("sqs")
+    queue_url = sqs.create_queue(QueueName="nightly-export-failures")["QueueUrl"]
+    queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
+    lambda_client.put_function_event_invoke_config(
+        FunctionName="nightly-export",
+        DestinationConfig={"OnFailure": {"Destination": queue_arn}},
+    )
+
+    # Only called through API Gateway, so the check leaves it out.
+    allow("orders-api", "apigateway.amazonaws.com")
 
     logs = client("logs")
     for name, retention in (

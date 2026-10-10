@@ -58,7 +58,7 @@ jobs:
           done
 
   web:
-    name: Site lint and build
+    name: Site lint, tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,6 +75,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm test
       # The build type-checks too. Running tsc on its own first fails,
       # because Next.js generates some global types during the build.
       - run: pnpm build
