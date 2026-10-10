@@ -152,9 +152,9 @@ Each stage must leave something showable. Do not start a later stage before the 
   - The role template takes a `RoleNameSuffix`, and is served publicly from the `pillarscan-onboarding-*` bucket for CloudFormation's quick-create link. The scanner reports that bucket; that is expected.
   - Site: `/account` (`web/components/account/`, `web/lib/auth.ts` for PKCE sign-in). The Cognito domain and client ID are public values in `web/lib/auth.ts`.
   - NOT yet verified end to end: nobody has signed in. Claude cannot enter passwords, so the owner has to do the first sign-in, connect and scan. Verified so far: 401 without a token, the Cognito page opens with PKCE and offers no sign-up, and the unit tests.
-  - Pending: the last Lambda build (adds the `scanning` account status the site polls for) was NOT deployed because the `aws login` session expired. After the owner runs `aws login --profile pillarscan`, run `python scripts/build_lambdas.py` and `terraform apply` in `infra/platform`.
+  - The Lambda build with the `scanning` account status is deployed (2026-10-10). The owner's Cognito user is `asi@lytaworks.com`, created the same day and waiting for its first sign-in.
 - Standing instruction from the owner (2026-10-10): for this project, do the work and keep pushing; do not wait for a separate go-ahead to commit and push.
-- **Next step:** redeploy the Lambdas once AWS access is back, create the owner's user, then the owner tests sign-in, connect and scan. After that: the demo video and README screenshot refresh.
+- **Next step:** the owner tests sign-in, connect and scan, and reports anything that fails. After that: the demo video and README screenshot refresh.
 
 ## Rules
 
