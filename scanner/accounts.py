@@ -118,14 +118,22 @@ class AccountStore:
         try:
             self._table.update_item(
                 Key=self._key(user_id, aws_account_id),
-                UpdateExpression="SET last_requested_at = :now",
+                # The status tells the site a scan is under way. The scanner
+                # replaces it with the outcome when it finishes.
+                UpdateExpression=(
+                    "SET last_requested_at = :now, #status = :scanning REMOVE last_error"
+                ),
+                ExpressionAttributeNames={"#status": "status"},
                 # Timestamps in this format compare correctly as text.
                 ConditionExpression=Attr("PK").exists()
                 & (
                     Attr("last_requested_at").not_exists()
                     | Attr("last_requested_at").lt(earliest_previous)
                 ),
-                ExpressionAttributeValues={":now": format_timestamp(now)},
+                ExpressionAttributeValues={
+                    ":now": format_timestamp(now),
+                    ":scanning": "scanning",
+                },
             )
         except ClientError as error:
             if error.response["Error"]["Code"] == "ConditionalCheckFailedException":

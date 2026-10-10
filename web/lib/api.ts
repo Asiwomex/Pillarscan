@@ -32,3 +32,72 @@ export async function fetchHistory(): Promise<ScanSummary[]> {
 export function fetchScan(scanId: string): Promise<ScanReport> {
   return get<ScanReport>(`/scans/${scanId}`);
 }
+
+// --- Routes for signed-in users --------------------------------------------
+
+/** An AWS account the signed-in user has connected. */
+export type ConnectedAccount = {
+  aws_account_id: string;
+  role_arn: string;
+  status: "pending" | "scanning" | "connected" | "error";
+  created_at: string;
+  last_requested_at: string | null;
+  last_scanned_at: string | null;
+  last_scan_id: string | null;
+  last_error: string | null;
+  /** Opens CloudFormation with the role template filled in. */
+  launch_url: string;
+};
+
+/** Thrown when the API refuses the token, which means the session has ended. */
+export class SignedOutError extends Error {}
+
+async function send<T>(token: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (response.status === 401) throw new SignedOutError("Your session has ended.");
+  if (!response.ok) {
+    // The API explains refusals in a "detail" field; show that when it is text.
+    const problem = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+    throw new Error(
+      typeof problem?.detail === "string"
+        ? problem.detail
+        : "Something went wrong. Please try again.",
+    );
+  }
+  return (await response.json()) as T;
+}
+
+export async function fetchAccounts(token: string): Promise<ConnectedAccount[]> {
+  return (await send<{ accounts: ConnectedAccount[] }>(token, "GET", "/me/accounts")).accounts;
+}
+
+export function connectAccount(token: string, awsAccountId: string): Promise<ConnectedAccount> {
+  return send<ConnectedAccount>(token, "POST", "/me/accounts", { aws_account_id: awsAccountId });
+}
+
+export async function requestScan(token: string, awsAccountId: string): Promise<void> {
+  await send(token, "POST", `/me/accounts/${awsAccountId}/scans`);
+}
+
+export async function fetchAccountHistory(
+  token: string,
+  awsAccountId: string,
+): Promise<ScanSummary[]> {
+  const path = `/me/accounts/${awsAccountId}/scans`;
+  return (await send<{ scans: ScanSummary[] }>(token, "GET", path)).scans;
+}
+
+export function fetchAccountScan(
+  token: string,
+  awsAccountId: string,
+  scanId: string,
+): Promise<ScanReport> {
+  return send<ScanReport>(token, "GET", `/me/accounts/${awsAccountId}/scans/${scanId}`);
+}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Check, CircleDashed } from "lucide-react";
 
 import { SeverityMark } from "@/components/severity-mark";
@@ -139,14 +140,14 @@ const PROGRESS = [
     body: "This page: a posture score, the pillars and a findings table with fixes.",
   },
   {
-    done: false,
+    done: true,
     title: "Scan history",
-    body: "An API on Lambda and DynamoDB that stores each scan and shows the trend.",
+    body: "A daily scan on Lambda, stored in DynamoDB and served by an API.",
   },
   {
-    done: false,
+    done: true,
     title: "Connect your own account",
-    body: "Sign in, deploy a one-click role template, and scan from the browser.",
+    body: "Sign in by invitation, create the read-only role in one click, and scan from the browser.",
   },
 ];
 
@@ -213,10 +214,10 @@ export function Footer() {
     <footer className="border-t border-night-line">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <a href="#top" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <Mark className="size-5" sound="var(--sound-bright)" />
             <span className="font-semibold tracking-tight">Pillarscan</span>
-          </a>
+          </Link>
           <p className="flex flex-col gap-1 text-on-night-muted sm:flex-row sm:gap-6">
             <span>
               Built by{" "}

@@ -71,6 +71,9 @@ def test_a_second_scan_request_straight_away_is_refused(table: Any) -> None:
 
     accounts.mark_scan_requested("user-1", ACCOUNT)
 
+    account = accounts.get("user-1", ACCOUNT)
+    assert account is not None
+    assert account["status"] == "scanning"
     with pytest.raises(ScanRequestedTooSoon):
         accounts.mark_scan_requested("user-1", ACCOUNT)
 

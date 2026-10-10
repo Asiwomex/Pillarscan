@@ -20,7 +20,7 @@ It is a portfolio project by [Asiwome Boateng](https://asiwomex.vercel.app/), no
 | Site: landing page and dashboard, opening on sample data | Built | [web](web) |
 | Backend: a daily scan on Lambda, stored in DynamoDB, served by an API | Built | [infra/platform](infra/platform), [api](api) |
 | Scan history in the dashboard | Built | [web](web) |
-| Sign in and scan your own account from the browser | Planned | |
+| Sign in (by invitation), connect an AWS account and scan it from the browser | Built | [web/app/account](web/app/account), [infra/platform/auth.tf](infra/platform/auth.tf) |
 
 ## How it fits together
 
@@ -44,6 +44,8 @@ flowchart LR
     scanner -- "sts:AssumeRole + external ID" --> role
     scanner -- "scrubbed scan" --> table
     table --> api --> gateway --> site
+    cognito["Cognito<br/>sign-in by invitation"] -. "token checked by" .-> gateway
+    gateway -- "signed-in scan request" --> queue
     sample["sample-data/<br/>demo scan"] --> site
 ```
 
@@ -114,7 +116,28 @@ terraform init -backend-config=backend.hcl
 terraform apply
 ```
 
-The API has three routes: `GET /health`, `GET /scans` for the history, and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). It cannot write anything.
+The public routes are `GET /health`, `GET /scans` for the history and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). The `/me/...` routes are for signed-in users: connect an account, request a scan and read your own scans.
+
+## Signing in and connecting an account
+
+Anyone can open the demo. Scanning your own account needs a sign-in, and sign-in is by invitation: self sign-up is switched off in Cognito, and an administrator creates each user.
+
+1. **Sign in.** The site sends you to Cognito's own sign-in page and gets back a short-lived token (authorization code flow with PKCE). The site never sees a password.
+2. **Connect an account.** You enter a 12-digit AWS account ID. Pillarscan makes up an external ID and a role name for that connection.
+3. **Create the role.** A link opens CloudFormation in your account with the [role template](onboarding/pillarscan-role.yaml) filled in. The role is read-only and trusts only Pillarscan's scanner, and only when it presents that external ID.
+4. **Scan.** The request goes on the queue, the scanner assumes your role and the result is stored for you alone.
+
+Three things keep one user away from another's data:
+
+- API Gateway checks the token before the API runs, and the API takes the user's identity only from that verified token.
+- Each connection has its own external ID, so knowing someone's account ID is not enough to be let into their role.
+- Scans are filed under the user and the account together. Two users who connect the same account cannot read each other's results.
+
+To invite someone, create their user (they get an email with a temporary password):
+
+```powershell
+aws cognito-idp admin-create-user --user-pool-id <pool-id> --username <their-email>
+```
 
 ## Site
 

@@ -130,7 +130,14 @@ const LIVE_NOTE: Record<Live["status"], string> = {
     "This project's own AWS account, scanned every day by a Lambda function. Account and resource IDs are replaced before a scan is stored.",
 };
 
-export function Dashboard({ scans }: { scans: Scan[] }) {
+export function Dashboard({
+  scans,
+  caption = "Live demo",
+}: {
+  scans: Scan[];
+  /** Shown beside the name in the top bar. */
+  caption?: string;
+}) {
   const [scanId, setScanId] = useState(scans[0].id);
   const [live, setLive] = useState<Live>({ status: "idle", history: [], report: null });
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -197,14 +204,16 @@ export function Dashboard({ scans }: { scans: Scan[] }) {
         <div className="flex items-center gap-2.5">
           <Mark className="size-5" />
           <span className="text-[0.9375rem] font-semibold tracking-tight">Pillarscan</span>
-          <span className="text-muted-ink">Live demo</span>
+          <span className="text-muted-ink">{caption}</span>
         </div>
-        <Segmented
-          label="Scan"
-          value={scan.id}
-          onChange={chooseScan}
-          options={scans.map((option) => ({ value: option.id, label: option.label }))}
-        />
+        {scans.length > 1 && (
+          <Segmented
+            label="Scan"
+            value={scan.id}
+            onChange={chooseScan}
+            options={scans.map((option) => ({ value: option.id, label: option.label }))}
+          />
+        )}
       </div>
 
       <div className="px-4 pt-5 pb-6 sm:px-6">

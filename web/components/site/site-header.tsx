@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Menu, X } from "lucide-react";
 
 import { Mark } from "@/components/site/mark";
@@ -50,16 +51,16 @@ export function SiteHeader() {
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <a href="#top" className="flex items-center gap-2.5" onClick={() => setMenuOpen(false)}>
+        <Link href="/" className="flex items-center gap-2.5" onClick={() => setMenuOpen(false)}>
           <Mark className="size-6" sound="var(--sound-bright)" />
           <span className="text-lg font-semibold tracking-tight">Pillarscan</span>
-        </a>
+        </Link>
 
         <nav aria-label="Sections" className="hidden items-center gap-1 text-sm md:flex">
           {NAV.map((item) => (
             <a
               key={item.id}
-              href={`#${item.id}`}
+              href={`/#${item.id}`}
               aria-current={active === item.id ? "location" : undefined}
               className={cn(
                 "rounded-md px-3 py-2 transition-colors duration-150 hover:text-on-night",
@@ -71,9 +72,15 @@ export function SiteHeader() {
           ))}
           <a
             href={REPO_URL}
-            className="ml-3 rounded-md border border-night-line px-3 py-2 font-medium transition-colors duration-150 hover:border-on-night-muted"
+            className="rounded-md px-3 py-2 text-on-night-muted transition-colors duration-150 hover:text-on-night"
           >
             Source
+          </a>
+          <a
+            href="/account"
+            className="ml-3 rounded-md border border-night-line px-3 py-2 font-medium transition-colors duration-150 hover:border-on-night-muted"
+          >
+            Sign in
           </a>
         </nav>
 
@@ -98,7 +105,7 @@ export function SiteHeader() {
           {NAV.map((item) => (
             <a
               key={item.id}
-              href={`#${item.id}`}
+              href={`/#${item.id}`}
               onClick={() => setMenuOpen(false)}
               aria-current={active === item.id ? "location" : undefined}
               className={cn(
@@ -109,11 +116,14 @@ export function SiteHeader() {
               {item.label}
             </a>
           ))}
+          <a href={REPO_URL} className="flex h-12 items-center border-b border-night-line text-lg">
+            Source
+          </a>
           <a
-            href={REPO_URL}
+            href="/account"
             className="mt-4 flex h-12 items-center justify-center rounded-md border border-night-line font-semibold"
           >
-            Read the source
+            Sign in
           </a>
         </nav>
       )}
