@@ -14,7 +14,6 @@ import {
   fetchAccounts,
   requestScan,
   type ConnectedAccount,
-  type ScanSummary,
 } from "@/lib/api";
 import {
   completeSignIn,
@@ -24,8 +23,7 @@ import {
   signOut,
   type Session,
 } from "@/lib/auth";
-import type { ScanReport } from "@/lib/findings";
-import { formatDay } from "@/lib/format";
+import type { ScanReport, ScanSummary } from "@/lib/findings";
 import { cn } from "@/lib/utils";
 
 const POLL_EVERY_MS = 5000;
@@ -318,43 +316,17 @@ export function AccountApp() {
 
       {viewing && (
         <div ref={results} className="mt-10 scroll-mt-20">
-          {viewing.history.length > 1 && (
-            <div className="mb-4 flex items-center gap-3">
-              <h2 className="shrink-0 text-sm font-medium text-on-night-muted">Earlier scans</h2>
-              <ul className="flex gap-1.5 overflow-x-auto pb-1">
-                {viewing.history.map((entry) => {
-                  const current = viewing.report.scan.started_at === entry.started_at;
-                  return (
-                    <li key={entry.scan_id} className="shrink-0">
-                      <button
-                        type="button"
-                        aria-pressed={current}
-                        onClick={() => void view(viewing.accountId, entry.scan_id)}
-                        className={cn(
-                          "flex h-9 items-center gap-2 rounded-md border px-3 text-sm transition-colors duration-150",
-                          current
-                            ? "border-on-night"
-                            : "border-night-line text-on-night-muted hover:border-on-night-muted",
-                        )}
-                      >
-                        {formatDay(entry.started_at)}
-                        <span className="font-semibold">{entry.score ?? "n/a"}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
           <Dashboard
             key={viewing.report.scan.started_at}
             caption="Your scan"
+            onSelectHistory={(scanId) => void view(viewing.accountId, scanId)}
             scans={[
               {
                 id: "private",
                 label: `Account ${viewing.accountId}`,
                 note: "Only you can see this scan. Nothing in it has been replaced or hidden.",
                 report: viewing.report,
+                history: viewing.history,
               },
             ]}
           />

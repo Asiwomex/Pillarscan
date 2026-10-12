@@ -25,3 +25,10 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
 export function formatDay(iso: string): string {
   return DAY.format(new Date(iso));
 }
+
+const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** Just the day: "9 Oct". */
+export function formatDate(iso: string): string {
+  return DATE.format(new Date(iso));
+}

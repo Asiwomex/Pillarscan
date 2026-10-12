@@ -42,7 +42,7 @@ Neutrals are tinted towards navy, never flat grey. No gradients.
 
 - One family: **Instrument Sans** (400, 500, 600), for everything.
 - **JetBrains Mono** (400) only for machine identifiers: ARNs, resource IDs, check IDs, regions.
-- Base 14px for the app, 13px in the table. Score 48px / 1.0 / -0.03em, weight 600, with its verdict in words beside it. Section titles 15px / 600. Labels are sentence case, 13px, muted. No all-caps tracked labels.
+- Base 14px for the app, 13px in the table. Stats in the overview strip are 24px / 600, each with a 13px label above and its change below. Section titles 15px / 600. Labels are sentence case, 13px, muted. No all-caps tracked labels.
 - Numbers use tabular figures.
 
 ## Spacing and shape
@@ -57,21 +57,32 @@ A menu bar stays fixed to the top of the window on every screen size, with jump 
 
 Hero headline: clamp(40px, 6.2vw, 72px) / 1.02 / -0.03em, weight 600. Section headings: clamp(28px, 3.4vw, 40px).
 
-Inside the demo, three bands answer three questions in order: how bad is it, where is it, what exactly.
+Inside the dashboard, four bands answer four questions in order: how is it going, where is the damage, how does it break down, and what exactly.
 
 ```
-[ Pillarscan ]                    [ Demo account | Real account ]  Source
-------------------------------------------------------------------------
-| 54 /100  Needs attention      | Failed checks by service             |
-| 38 of 75 checks failed        | IAM   ######                          |
-| [crit|high|medium|low bar]    | EC2   ####                            |
-------------------------------------------------------------------------
-| Security  58      | Reliability  50     | Cost  42                    |
-| ▪▪▪▪▪▪▪▪▪▪        | ▪▪▪▪▪▪▪▪▪▪          | ▪▪▪▪▪▪▪▪▪▪                  |
-------------------------------------------------------------------------
-| Findings   [Failed 38][Passed 37][All 75]   pillar v  severity v  🔍 |
-| severity | finding + resource | service | region | status            |
+[ Pillarscan  Live demo ]              [ Scan v ] [ Demo account | Live account ]
+------------------------------------------------------------------------------
+| Posture score | Failed checks | Passed | Resources | Regions               |
+| 60 / 100      | 30            | 42     | 49        | 3                     |
+| 2 higher than the previous scan                                            |
+| ~~~~~~~~~~~ line: the selected stat across scans ~~~~~~~~~~~~~~~~~~~~~~~~~ |
+------------------------------------------------------------------------------
+| Security 61   ▪▪▪▪▪▪▪▪▪▪▪▪ | Reliability 60 ▪▪▪▪▪▪ | Cost 52 ▪▪▪▪▪▪        |
+------------------------------------------------------------------------------
+| Failed checks by [Service|Check] | Failed checks by [Severity|Region]      |
+| EBS  ======--  8                 | High    =======  8                      |
+------------------------------------------------------------------------------
+| Findings  [Failed 30][Passed 42][All 72]  pillar v  search                 |
+| (Service: EBS x)  (Severity: Low x)  Clear all                             |
+| severity | finding + resource | service | region | status                  |
 ```
+
+Principles taken from analytics products (Plausible's public dashboard was the reference; none of its colours, type or dark theme):
+
+- **Change over time comes first.** The stats sit in one strip, not separate cards, and say how they moved since the previous scan in words. Choosing Posture score or Failed checks changes what the line plots.
+- **Everything filters the table.** A row in a breakdown, a pillar, or a search narrows the findings. Each filter in use shows as a chip that removes it.
+- **No empty panels.** The three pillars share one panel, and each gets width in proportion to its number of checks.
+- **Honest charts.** The trend is a line, not a filled area, because its axis is fitted to the data and does not start at zero.
 
 Left aligned throughout. Phones get their own layout, not a squeezed one: full-width 48px buttons, the pillars under the headline, stacked bands, and a table reduced to severity, finding and status. Tap targets are at least 44px.
 

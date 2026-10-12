@@ -19,6 +19,7 @@ import json
 import os
 import zipfile
 from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ from moto.ec2 import ec2_backends  # noqa: E402
 from moto.iam import iam_backends  # noqa: E402
 
 from scanner.engine import run_scan  # noqa: E402
+from scanner.store import summarise  # noqa: E402
 
 MOTO_ACCOUNT_ID = "123456789012"
 DEMO_ACCOUNT_ID = "000000000000"
@@ -350,19 +352,113 @@ def build_serverless() -> None:
             logs.put_retention_policy(logGroupName=name, retentionInDays=retention)
 
 
+# --- A week in the life of the account -------------------------------------
+#
+# The dashboard shows how a score moves between scans, so the demo account
+# is scanned once a day for a week while its owners fix some things and
+# break one. Each step below is a change made before that day's scan.
+
+
+def remove_forgotten_volume() -> None:
+    ec2 = client("ec2")
+    volumes = ec2.describe_volumes(Filters=[{"Name": "size", "Values": ["500"]}])["Volumes"]
+    ec2.delete_volume(VolumeId=volumes[0]["VolumeId"])
+
+
+def open_debug_group() -> None:
+    # Someone opens SSH to the world "just for a minute".
+    ec2 = client("ec2")
+    group_id = ec2.create_security_group(GroupName="debug-temp", Description="debug-temp")[
+        "GroupId"
+    ]
+    ec2.authorize_security_group_ingress(
+        GroupId=group_id,
+        IpPermissions=[
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 22,
+                "ToPort": 22,
+                "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+            }
+        ],
+    )
+
+
+def turn_on_recovery_and_retention() -> None:
+    client("dynamodb").update_continuous_backups(
+        TableName="feature-flags",
+        PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
+    )
+    client("logs").put_retention_policy(logGroupName="/northwind/api/access", retentionInDays=30)
+
+
+def close_debug_group_and_version_artifacts() -> None:
+    client("ec2").delete_security_group(GroupName="debug-temp")
+    client("s3").put_bucket_versioning(
+        Bucket="northwind-artifacts", VersioningConfiguration={"Status": "Enabled"}
+    )
+
+
+def release_spare_address() -> None:
+    ec2 = client("ec2", "us-west-2")
+    address = ec2.describe_addresses()["Addresses"][0]
+    ec2.release_address(AllocationId=address["AllocationId"])
+
+
+def block_public_access_on_exports() -> None:
+    client("s3").put_public_access_block(
+        Bucket="northwind-customer-exports", PublicAccessBlockConfiguration=ALL_BLOCKED
+    )
+
+
+# (days ago, the change made before that day's scan)
+TIMELINE: list[tuple[int, Callable[[], None] | None]] = [
+    (6, None),
+    (5, remove_forgotten_volume),
+    (4, open_debug_group),
+    (3, turn_on_recovery_and_retention),
+    (2, close_debug_group_and_version_artifacts),
+    (1, release_spare_address),
+    (0, block_public_access_on_exports),
+]
+
+HISTORY_FIELDS = (
+    "scan_id",
+    "started_at",
+    "score",
+    "failed",
+    "passed",
+    "errored",
+    "failed_by_severity",
+)
+
+
 def main() -> None:
+    session = boto3.Session(region_name=PRIMARY)
+    history: list[dict[str, Any]] = []
+    report: dict[str, Any] = {}
     with mock_aws():
         build_iam()
         build_s3()
         build_network_and_compute()
         build_data_stores()
         build_serverless()
-        result = run_scan(boto3.Session(region_name=PRIMARY), regions=REGIONS)
+        for days, change in TIMELINE:
+            if change is not None:
+                change()
+            scanned_at = days_ago(days).replace(hour=6, minute=0, second=0, microsecond=0)
+            report = run_scan(session, regions=REGIONS, now=scanned_at).to_dict()
+            summary = summarise(report)
+            history.append({field: summary[field] for field in HISTORY_FIELDS})
 
-    text = json.dumps(result.to_dict(), indent=2).replace(MOTO_ACCOUNT_ID, DEMO_ACCOUNT_ID)
+    # The file holds the latest scan in full, plus a one-line summary of
+    # each scan, newest first, in the shape the API's /scans route returns.
+    report["history"] = history[::-1]
+    text = json.dumps(report, indent=2).replace(MOTO_ACCOUNT_ID, DEMO_ACCOUNT_ID)
     OUTPUT.write_text(text + "\n", encoding="utf-8")
-    failed = sum(finding.status == "fail" for finding in result.findings)
-    print(f"Wrote {len(result.findings)} findings ({failed} failing) to {OUTPUT}")
+    scores = [entry["score"] for entry in history]
+    print(f"Wrote {len(report['findings'])} findings and {len(history)} scans to {OUTPUT}")
+    print(f"Scores over the week: {scores}")
 
 
 if __name__ == "__main__":

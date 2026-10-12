@@ -1,46 +1,63 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 
+import { BreakdownPanel } from "@/components/breakdown-panel";
 import { FindingDetail } from "@/components/finding-detail";
 import { FindingsTable } from "@/components/findings-table";
-import { PillarBlocks } from "@/components/pillar-blocks";
-import { ServiceChartFrame } from "@/components/service-chart-frame";
+import { Overview } from "@/components/overview";
+import { PillarWall } from "@/components/pillar-wall";
 import { Mark } from "@/components/site/mark";
-import { SEVERITY_COLOR } from "@/components/severity-mark";
+import { fetchHistory, fetchScan } from "@/lib/api";
+import { breakdown } from "@/lib/breakdown";
 import {
   PILLARS,
   PILLAR_LABELS,
   SEVERITIES,
   SEVERITY_LABELS,
   groupAcrossRegions,
+  serviceOf,
   type Finding,
   type FindingGroup,
   type Pillar,
-  type Severity,
   type ScanReport,
+  type ScanSummary,
+  type Severity,
   type Status,
 } from "@/lib/findings";
-import { fetchHistory, fetchScan, type ScanSummary } from "@/lib/api";
-import { formatDay, formatTimestamp } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import type { Scan } from "@/lib/scans";
-import { countBySeverity, postureScore, summarisePillars, verdict } from "@/lib/score";
+import { postureScore, summarisePillars } from "@/lib/score";
 import { cn } from "@/lib/utils";
 
 type Filters = {
   status: Status | "all";
   pillar: Pillar | "all";
   severity: Severity | "all";
+  service: string | "all";
+  check: string | "all";
+  region: string | "all";
   query: string;
 };
 
-const DEFAULT_FILTERS: Filters = { status: "fail", pillar: "all", severity: "all", query: "" };
+const DEFAULT_FILTERS: Filters = {
+  status: "fail",
+  pillar: "all",
+  severity: "all",
+  service: "all",
+  check: "all",
+  region: "all",
+  query: "",
+};
 
 function matches(finding: Finding, filters: Filters): boolean {
   if (filters.status !== "all" && finding.status !== filters.status) return false;
   if (filters.pillar !== "all" && finding.pillar !== filters.pillar) return false;
   if (filters.severity !== "all" && finding.severity !== filters.severity) return false;
+  if (filters.service !== "all" && serviceOf(finding) !== filters.service) return false;
+  if (filters.check !== "all" && finding.check_id !== filters.check) return false;
+  if (filters.region !== "all" && finding.region !== filters.region) return false;
   const query = filters.query.trim().toLowerCase();
   if (!query) return true;
   return [finding.title, finding.resource_arn, finding.check_id, finding.region].some((text) =>
@@ -135,10 +152,13 @@ const LIVE_NOTE: Record<Live["status"], string> = {
 export function Dashboard({
   scans,
   caption = "Live demo",
+  onSelectHistory,
 }: {
   scans: Scan[];
   /** Shown beside the name in the top bar. */
   caption?: string;
+  /** Given when the page around the dashboard can load an earlier scan. */
+  onSelectHistory?: (scanId: string) => void;
 }) {
   const [scanId, setScanId] = useState(scans[0].id);
   const [live, setLive] = useState<Live>({ status: "idle", history: [], report: null });
@@ -150,16 +170,20 @@ export function Dashboard({
   const isLive = scan.id === LIVE_SCAN_ID;
   const report = isLive && live.report ? live.report : scan.report;
   const { findings } = report;
-  const { regions, checks_run: checksRun, started_at: startedAt } = report.scan;
+  const { regions, started_at: startedAt } = report.scan;
+
+  // Earlier scans of the same account, newest first.
+  const history = isLive && live.report ? live.history : (scan.history ?? []);
+  const pickHistory = isLive && live.report ? (id: string) => void loadLive(id) : onSelectHistory;
 
   async function loadLive(historyScanId?: string) {
     setLive((current) => ({ status: "loading", history: current.history, report: null }));
     try {
-      const [history, liveReport] = await Promise.all([
+      const [liveHistory, liveReport] = await Promise.all([
         fetchHistory(),
         fetchScan(historyScanId ?? "latest"),
       ]);
-      setLive({ status: "ready", history, report: liveReport });
+      setLive({ status: "ready", history: liveHistory, report: liveReport });
     } catch {
       setLive((current) => ({ status: "failed", history: current.history, report: null }));
     }
@@ -167,6 +191,7 @@ export function Dashboard({
 
   function chooseScan(id: string) {
     setScanId(id);
+    setFilters(DEFAULT_FILTERS);
     // Fetched the first time the live scan is opened, not on page load, so
     // visitors who only look at the demo never call the API.
     if (id === LIVE_SCAN_ID && live.status === "idle") void loadLive();
@@ -174,12 +199,34 @@ export function Dashboard({
 
   const summary = useMemo(() => {
     const failed = findings.filter((finding) => finding.status === "fail");
+    const resources = new Set(
+      findings
+        .map((finding) => finding.resource_arn)
+        // Account-wide settings are not resources in their own right.
+        .filter((arn) => !arn.endsWith(":root")),
+    );
     return {
       score: postureScore(findings),
       failed,
       passed: findings.filter((finding) => finding.status === "pass").length,
-      failedBySeverity: countBySeverity(failed),
+      resources: resources.size,
       pillars: summarisePillars(findings),
+      byService: breakdown(failed, serviceOf),
+      byCheck: breakdown(
+        failed,
+        (finding) => finding.check_id,
+        (finding) => finding.title,
+      ),
+      // Severities read best in their own order, not by count.
+      bySeverity: breakdown(
+        failed,
+        (finding) => finding.severity,
+        (finding) => SEVERITY_LABELS[finding.severity],
+      ).sort(
+        (a, b) =>
+          SEVERITIES.indexOf(a.key as Severity) - SEVERITIES.indexOf(b.key as Severity),
+      ),
+      byRegion: breakdown(failed, (finding) => finding.region),
     };
   }, [findings]);
 
@@ -187,7 +234,6 @@ export function Dashboard({
     () => findings.filter((finding) => matches(finding, filters)),
     [findings, filters],
   );
-
   const visibleGroups = useMemo(() => groupAcrossRegions(visible), [visible]);
 
   const openGroup = useCallback((group: FindingGroup) => {
@@ -205,8 +251,39 @@ export function Dashboard({
     setFilters((current) => ({ ...current, ...patch }));
   }
 
-  const filtered =
-    filters.pillar !== "all" || filters.severity !== "all" || filters.query !== "";
+  /** Narrow the table from a breakdown row. Breakdowns only count failures. */
+  function narrow(patch: Partial<Filters>) {
+    update({ ...patch, status: "fail" });
+  }
+
+  // Everything narrowing the table beyond its status tab, each removable.
+  const checkTitle = summary.byCheck.find((row) => row.key === filters.check)?.label;
+  const chips = [
+    filters.pillar !== "all" && {
+      label: `Pillar: ${PILLAR_LABELS[filters.pillar]}`,
+      clear: () => update({ pillar: "all" }),
+    },
+    filters.severity !== "all" && {
+      label: `Severity: ${SEVERITY_LABELS[filters.severity]}`,
+      clear: () => update({ severity: "all" }),
+    },
+    filters.service !== "all" && {
+      label: `Service: ${filters.service}`,
+      clear: () => update({ service: "all" }),
+    },
+    filters.check !== "all" && {
+      label: `Check: ${checkTitle ?? filters.check}`,
+      clear: () => update({ check: "all" }),
+    },
+    filters.region !== "all" && {
+      label: `Region: ${filters.region}`,
+      clear: () => update({ region: "all" }),
+    },
+    filters.query.trim() !== "" && {
+      label: `Search: ${filters.query.trim()}`,
+      clear: () => update({ query: "" }),
+    },
+  ].filter((chip) => chip !== false);
 
   return (
     <div className="demo-frame overflow-hidden rounded-xl border border-night-line bg-page text-ink shadow-2xl shadow-black/40">
@@ -216,18 +293,31 @@ export function Dashboard({
           <span className="text-[0.9375rem] font-semibold tracking-tight">Pillarscan</span>
           <span className="text-muted-ink">{caption}</span>
         </div>
-        {scans.length > 1 && (
-          <Segmented
-            label="Scan"
-            value={scan.id}
-            onChange={chooseScan}
-            options={scans.map((option) => ({ value: option.id, label: option.label }))}
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {pickHistory && history.length > 1 && (
+            <Select
+              label="Scan"
+              value={history.find((entry) => entry.started_at === startedAt)?.scan_id ?? ""}
+              onChange={(id) => pickHistory(id)}
+              options={history.map((entry) => ({
+                value: entry.scan_id,
+                label: `${formatDay(entry.started_at)} UTC`,
+              }))}
+            />
+          )}
+          {scans.length > 1 && (
+            <Segmented
+              label="Account"
+              value={scan.id}
+              onChange={chooseScan}
+              options={scans.map((option) => ({ value: option.id, label: option.label }))}
+            />
+          )}
+        </div>
       </div>
 
-      <div className="px-4 pt-5 pb-6 sm:px-6">
-        <p className="mb-4 max-w-3xl text-[0.8125rem] text-pretty text-muted-ink">
+      <div className="flex flex-col gap-4 px-4 pt-5 pb-6 sm:px-6">
+        <p className="max-w-3xl text-[0.8125rem] text-pretty text-muted-ink">
           <span className="font-medium text-ink">{scan.label}.</span>{" "}
           <span aria-live="polite">{isLive ? LIVE_NOTE[live.status] : scan.note}</span>
           {isLive && live.status === "failed" && (
@@ -241,141 +331,68 @@ export function Dashboard({
           )}
         </p>
 
-        {isLive && live.history.length > 0 && (
-          <div className="mb-4 flex items-center gap-3">
-            <h3 className="shrink-0 text-[0.8125rem] font-medium text-muted-ink">History</h3>
-            {/* Scrolls sideways on its own, so a long history never widens the page. */}
-            <ul className="flex gap-1.5 overflow-x-auto pb-1">
-              {live.history.map((entry) => {
-                const current = live.report?.scan.started_at === entry.started_at;
-                return (
-                  <li key={entry.scan_id} className="shrink-0">
-                    <button
-                      type="button"
-                      aria-pressed={current}
-                      onClick={() => void loadLive(entry.scan_id)}
-                      className={cn(
-                        CONTROL,
-                        "flex items-center gap-2",
-                        current && "border-ink hover:border-ink",
-                      )}
-                    >
-                      {formatDay(entry.started_at)}
-                      <span className="font-semibold">{entry.score ?? "n/a"}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        <Overview
+          score={summary.score}
+          failed={summary.failed.length}
+          passed={summary.passed}
+          resources={summary.resources}
+          regions={regions.length}
+          startedAt={startedAt}
+          history={history}
+        />
 
-        <div className="grid gap-4 lg:grid-cols-12">
-          <section aria-labelledby="score-heading" className="panel p-5 lg:col-span-5">
-            <h3 id="score-heading" className="text-[0.8125rem] font-medium text-muted-ink">
-              Posture score
-            </h3>
-            <p className="mt-2 flex items-baseline gap-3">
-              <span className="text-5xl leading-none font-semibold tracking-[-0.03em]">
-                {summary.score ?? "n/a"}
-              </span>
-              <span className="text-muted-ink">/ 100</span>
-              <span className="ml-auto text-[0.9375rem] font-semibold">{verdict(summary.score)}</span>
-            </p>
-            <p className="mt-3 text-pretty">
-              {summary.failed.length} of {findings.length} checks failed.{" "}
-              <span className="text-muted-ink">
-                {checksRun.length} rules
-                {regions.length > 0 &&
-                  `, ${regions.length} ${regions.length === 1 ? "region" : "regions"}`}
-                , scanned {formatTimestamp(startedAt)}.
-              </span>
-            </p>
+        {/* Keyed by scan so the sweep replays when the scan changes. */}
+        <PillarWall
+          key={`${scan.id}:${startedAt}`}
+          pillars={summary.pillars}
+          findings={findings}
+          selected={filters.pillar}
+          onFilter={(pillar) => update({ pillar })}
+          onOpen={openDetail}
+        />
 
-            {summary.failed.length > 0 && (
-              <div
-                className="mt-5 flex h-2 gap-0.5 overflow-hidden rounded-full"
-                aria-hidden="true"
-              >
-                {SEVERITIES.filter((severity) => summary.failedBySeverity[severity] > 0).map(
-                  (severity) => (
-                    <span
-                      key={severity}
-                      style={{
-                        background: SEVERITY_COLOR[severity],
-                        flexGrow: summary.failedBySeverity[severity],
-                      }}
-                    />
-                  ),
-                )}
-              </div>
-            )}
-            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
-              {SEVERITIES.map((severity) => (
-                <li key={severity}>
-                  <button
-                    type="button"
-                    onClick={() => update({ status: "fail", severity })}
-                    className="group flex items-center gap-2 rounded-md py-1 text-left"
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ background: SEVERITY_COLOR[severity] }}
-                      aria-hidden="true"
-                    />
-                    <span className="font-semibold">{summary.failedBySeverity[severity]}</span>
-                    <span className="text-muted-ink underline-offset-4 group-hover:underline">
-                      {SEVERITY_LABELS[severity]}
-                    </span>
-                    <span className="sr-only">failures, show them in the table</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section aria-labelledby="service-heading" className="panel p-5 lg:col-span-7">
-            <h3 id="service-heading" className="mb-3 text-[0.8125rem] font-medium text-muted-ink">
-              Failed checks by service
-            </h3>
-            <ServiceChartFrame failed={summary.failed} />
-          </section>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <BreakdownPanel
+            title="Failed checks by"
+            tabs={[
+              {
+                id: "service",
+                label: "Service",
+                rows: summary.byService,
+                selected: filters.service === "all" ? null : filters.service,
+                onSelect: (key) => narrow({ service: key ?? "all" }),
+              },
+              {
+                id: "check",
+                label: "Check",
+                rows: summary.byCheck,
+                selected: filters.check === "all" ? null : filters.check,
+                onSelect: (key) => narrow({ check: key ?? "all" }),
+              },
+            ]}
+          />
+          <BreakdownPanel
+            title="Failed checks by"
+            tabs={[
+              {
+                id: "severity",
+                label: "Severity",
+                rows: summary.bySeverity,
+                selected: filters.severity === "all" ? null : filters.severity,
+                onSelect: (key) => narrow({ severity: (key as Severity | null) ?? "all" }),
+              },
+              {
+                id: "region",
+                label: "Region",
+                rows: summary.byRegion,
+                selected: filters.region === "all" ? null : filters.region,
+                onSelect: (key) => narrow({ region: key ?? "all" }),
+              },
+            ]}
+          />
         </div>
 
-        {/* Keyed by scan so the sweep replays when the scan is switched. */}
-        <div key={`${scan.id}:${startedAt}`} className="mt-4 grid gap-4 md:grid-cols-3">
-          {summary.pillars.map((pillar) => (
-            <PillarBlocks
-              key={pillar.pillar}
-              summary={pillar}
-              findings={findings.filter((finding) => finding.pillar === pillar.pillar)}
-              selected={filters.pillar === pillar.pillar}
-              onFilter={() =>
-                update({ pillar: filters.pillar === pillar.pillar ? "all" : pillar.pillar })
-              }
-              onOpen={openDetail}
-            />
-          ))}
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem] text-muted-ink">
-          <li className="flex items-center gap-1.5">
-            <span className="size-3 rounded-sm bg-sound" aria-hidden="true" />
-            Passed
-          </li>
-          {SEVERITIES.map((severity) => (
-            <li key={severity} className="flex items-center gap-1.5">
-              <span
-                className="size-3 rounded-sm"
-                style={{ background: SEVERITY_COLOR[severity] }}
-                aria-hidden="true"
-              />
-              {SEVERITY_LABELS[severity]}
-            </li>
-          ))}
-          <li>One block is one check on one resource. Select a block to open it.</li>
-        </ul>
-
-        <section aria-labelledby="findings-heading" className="panel mt-6 overflow-hidden">
+        <section aria-labelledby="findings-heading" className="panel overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 p-5">
             <h3 id="findings-heading" className="mr-auto text-[0.9375rem] font-semibold">
               Findings
@@ -399,18 +416,6 @@ export function Dashboard({
                 ...PILLARS.map((pillar) => ({ value: pillar, label: PILLAR_LABELS[pillar] })),
               ]}
             />
-            <Select
-              label="Severity"
-              value={filters.severity}
-              onChange={(severity) => update({ severity })}
-              options={[
-                { value: "all", label: "All" },
-                ...SEVERITIES.map((severity) => ({
-                  value: severity,
-                  label: SEVERITY_LABELS[severity],
-                })),
-              ]}
-            />
             <label className={cn(CONTROL, "flex w-full items-center gap-2 sm:w-64")}>
               <Search className="size-3.5 shrink-0 text-muted-ink" aria-hidden="true" />
               <span className="sr-only">Search findings</span>
@@ -423,6 +428,35 @@ export function Dashboard({
               />
             </label>
           </div>
+
+          {chips.length > 0 && (
+            <ul aria-label="Filters in use" className="flex flex-wrap items-center gap-2 px-5 pb-4">
+              {chips.map((chip) => (
+                <li key={chip.label}>
+                  <button
+                    type="button"
+                    onClick={chip.clear}
+                    className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md bg-ink pr-1.5 pl-2.5 text-[0.8125rem] text-surface"
+                  >
+                    <span className="truncate">{chip.label}</span>
+                    <X className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="sr-only">Remove this filter</span>
+                  </button>
+                </li>
+              ))}
+              {chips.length > 1 && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ ...DEFAULT_FILTERS, status: filters.status })}
+                    className="text-[0.8125rem] font-medium text-sound underline-offset-4 hover:underline"
+                  >
+                    Clear all
+                  </button>
+                </li>
+              )}
+            </ul>
+          )}
 
           {visible.length > 0 ? (
             <FindingsTable groups={visibleGroups} onSelect={openGroup} />
@@ -439,25 +473,14 @@ export function Dashboard({
             </div>
           )}
 
-          <div
-            className="flex items-center justify-between border-t border-line px-5 py-2.5 text-[0.8125rem] text-muted-ink"
+          <p
+            className="border-t border-line px-5 py-2.5 text-[0.8125rem] text-pretty text-muted-ink"
             aria-live="polite"
           >
-            <span>
-              Showing {visible.length} of {findings.length} findings
-              {visibleGroups.length < visible.length &&
-                `, with repeats across regions shown as one row (${visibleGroups.length} rows)`}
-            </span>
-            {filtered && (
-              <button
-                type="button"
-                onClick={() => setFilters({ ...DEFAULT_FILTERS, status: filters.status })}
-                className="font-medium text-sound underline-offset-4 hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+            Showing {visible.length} of {findings.length} findings
+            {visibleGroups.length < visible.length &&
+              `, with repeats across regions shown as one row (${visibleGroups.length} rows)`}
+          </p>
         </section>
       </div>
 

@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { ScanReport } from "./findings";
+import type { ScanReport, ScanSummary } from "./findings";
 
 export type Scan = {
   id: string;
   label: string;
   note: string;
   report: ScanReport;
+  /** Earlier scans of the same account, newest first, for the trend. */
+  history?: ScanSummary[];
 };
 
 // Demo mode reads the committed files in sample-data/ at the repo root.
@@ -19,13 +21,15 @@ function read(file: string): ScanReport {
 }
 
 export function loadScans(): Scan[] {
+  const demo = read("demo-findings.json");
   return [
     {
       id: "demo",
       label: "Demo account",
       note:
         "A fictional company's account. The findings come from running the real scanner against mocked AWS, so every check has something to show.",
-      report: read("demo-findings.json"),
+      report: demo,
+      history: demo.history,
     },
     {
       id: "real",

@@ -24,6 +24,17 @@ export type Finding = {
   scanned_at: string;
 };
 
+/** One scan in a history list: the numbers without the findings. */
+export type ScanSummary = {
+  scan_id: string;
+  started_at: string;
+  score: number | null;
+  failed: number;
+  passed: number;
+  errored: number;
+  failed_by_severity: Partial<Record<Severity, number>>;
+};
+
 export type ScanReport = {
   scan: {
     account_id: string;
@@ -33,6 +44,8 @@ export type ScanReport = {
     checks_run: string[];
   };
   findings: Finding[];
+  /** Earlier scans of the same account, newest first. Only in sample files. */
+  history?: ScanSummary[];
 };
 
 export const PILLAR_LABELS: Record<Pillar, string> = {
@@ -58,6 +71,11 @@ export const STATUS_LABELS: Record<Status, string> = {
 export function resourceName(arn: string): string {
   const resource = arn.split(":").slice(5).join(":");
   if (resource === "root") return "Account";
+  // Auto scaling groups and load balancers bury the name among generated IDs.
+  const group = resource.match(/autoScalingGroupName\/(.+)$/);
+  if (group) return group[1];
+  const balancer = resource.match(/^loadbalancer\/(?:app|net|gwy)\/([^/]+)\//);
+  if (balancer) return balancer[1];
   // "db:orders-prod" and "volume/vol-123" both carry a type before the name.
   return resource.replace(/^[a-z-]+[:/]/, "") || arn;
 }

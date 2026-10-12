@@ -141,7 +141,7 @@ aws cognito-idp admin-create-user --user-pool-id <pool-id> --username <their-ema
 
 ## Site
 
-A Next.js app in [web](web): a landing page with the dashboard embedded as the live demo. The dashboard shows a posture score, failed checks by service, one block per finding in each pillar, and a filterable table with a detail panel that explains each finding and how to fix it.
+A Next.js app in [web](web): a landing page with the dashboard embedded as the live demo. The dashboard shows the posture score and how it has moved between scans, one block per finding in each pillar, failed checks broken down by service, check, severity and region, and a table with a detail panel that explains each finding and how to fix it. Choosing a row in any breakdown filters the table.
 
 ```powershell
 cd web
@@ -155,7 +155,7 @@ The score is the severity-weighted share of checks that passed; see [web/lib/sco
 
 The site reads two files in [sample-data](sample-data) at build time:
 
-- `demo-findings.json`: a fictional company's account. [generate_demo.py](sample-data/generate_demo.py) builds it by running the real scanner against mocked AWS, so every check has something to show without paying for RDS instances or load balancers.
+- `demo-findings.json`: a fictional company's account, scanned once a day for a week while its owners fix some things and break one, so the demo has a trend to show. [generate_demo.py](sample-data/generate_demo.py) builds it by running the real scanner against mocked AWS, so every check has something to show without paying for RDS instances or load balancers.
 - `findings.json`: a scan of this project's own AWS account, scrubbed. The misconfigured resources in it are created on purpose by [infra/bait](infra/bait).
 
 ## Tests
