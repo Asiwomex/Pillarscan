@@ -134,7 +134,7 @@ There are two kinds of removal, and each cleans up after itself.
 .\scripts\destroy.ps1 -CheckOnly         # only look for anything left
 ```
 
-It refreshes Terraform's record against AWS, turns off the deletion protection on the table and user pool, destroys the platform, the bait and (if asked) the state bucket with every old version in it. Then it looks for anything still tagged `project=pillarscan` or `project=pillarscan-bait`, any Pillarscan IAM role and any role stack made from the onboarding template, offers to delete those stacks, and exits with an error if anything is left. The tag lookup can trail deletions by up to an hour, so a resource that was just deleted may still show; run `-CheckOnly` again later.
+It refreshes Terraform's record against AWS, turns off the deletion protection on the table and user pool, destroys the platform, the bait and (if asked) the state bucket with every old version in it. Then it looks for anything still tagged `project=pillarscan` or `project=pillarscan-bait`, any Pillarscan IAM role and any role stack made from the onboarding template, offers to delete those stacks, and exits with an error if anything is left. The tag lookup trails deletions, sometimes by more than an hour, so the script asks each resource's own service whether it still exists and only reports what really does.
 
 ## Signing in and connecting an account
 

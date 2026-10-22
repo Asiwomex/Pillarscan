@@ -115,6 +115,45 @@ function Read-JsonList {
     return @($parsed | Where-Object { $_ })
 }
 
+function Test-Exists {
+    # The tag lookup is an index that trails deletions, sometimes for over
+    # an hour. Ask the service itself about each resource it reports.
+    # Types not listed here are assumed to still exist.
+    param([string]$Arn)
+    $ErrorActionPreference = "Continue"
+    $parts = $Arn -split ":", 6
+    $service = $parts[2]
+    $region = $parts[3]
+    $resource = $parts[5]
+    $out = $null
+    switch -Wildcard ("$service/$resource") {
+        "s3/*" { $out = & aws s3api head-bucket --bucket $resource 2>$null }
+        "cognito-idp/userpool/*" { $out = & aws cognito-idp describe-user-pool --region $region --user-pool-id ($resource -replace "^userpool/", "") 2>$null }
+        "ec2/volume/*" { $out = & aws ec2 describe-volumes --region $region --volume-ids ($resource -replace "^volume/", "") 2>$null }
+        "ec2/security-group/*" { $out = & aws ec2 describe-security-groups --region $region --group-ids ($resource -replace "^security-group/", "") 2>$null }
+        "lambda/function:*" { $out = & aws lambda get-function --region $region --function-name ($resource -replace "^function:", "") 2>$null }
+        "dynamodb/table/*" { $out = & aws dynamodb describe-table --region $region --table-name ($resource -replace "^table/", "") 2>$null }
+        "sqs/*" { $out = & aws sqs get-queue-url --region $region --queue-name $resource 2>$null }
+        "sns/*" { $out = & aws sns get-topic-attributes --region $region --topic-arn $Arn 2>$null }
+        "ssm/parameter/*" { $out = & aws ssm get-parameter --region $region --name ($resource -replace "^parameter", "") 2>$null }
+        "apigateway/*" {
+            if ($resource -match "^/apis/([^/]+)") { $out = & aws apigatewayv2 get-api --region $region --api-id $Matches[1] 2>$null }
+            else { return $true }
+        }
+        "cloudwatch/alarm:*" {
+            $names = & aws cloudwatch describe-alarms --region $region --alarm-names ($resource -replace "^alarm:", "") --query "MetricAlarms[].AlarmName" --output text 2>$null
+            return ($LASTEXITCODE -eq 0 -and [bool]"$names".Trim())
+        }
+        "logs/log-group:*" {
+            $name = ($resource -replace "^log-group:", "") -replace ":\*$", ""
+            $names = & aws logs describe-log-groups --region $region --log-group-name-prefix $name --query "logGroups[].logGroupName" --output text 2>$null
+            return ($LASTEXITCODE -eq 0 -and (("$names" -split "\s+") -contains $name))
+        }
+        default { return $true }
+    }
+    return ($LASTEXITCODE -eq 0)
+}
+
 function Find-Leftovers {
     Write-Host "`n== Checking for anything left" -ForegroundColor Cyan
     $left = @()
@@ -129,7 +168,10 @@ function Find-Leftovers {
             # Kept on purpose without -IncludeBootstrap.
             $arns = @($arns | Where-Object { $_ -notlike "arn:aws:s3:::pillarscan-tfstate-*" })
         }
-        $left += $arns
+        foreach ($arn in $arns) {
+            if (Test-Exists $arn) { $left += $arn }
+            else { Write-Host "  already deleted (the tag lookup has not caught up): $arn" }
+        }
     }
 
     # The tag lookup is not always prompt about IAM, so ask IAM directly.
@@ -174,7 +216,7 @@ function Find-Leftovers {
     }
     Write-Host "Still present:" -ForegroundColor Yellow
     $left | ForEach-Object { Write-Host "  $_" }
-    Write-Host "Resources deleted in the last hour can linger in the tag lookup. Run '.\scripts\destroy.ps1 -CheckOnly' again later before deleting anything by hand."
+    Write-Host "Each of these was confirmed with its own service, or is of a type the script cannot confirm."
     return $false
 }
 
