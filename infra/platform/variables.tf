@@ -5,13 +5,13 @@ variable "region" {
 }
 
 variable "audit_role_name" {
-  description = "Name of the read-only role the scanner assumes (created by onboarding/pillarscan-role.yaml)."
+  description = "Name of the read-only role the scanner assumes. The platform's own is made in audit_role.tf; users' come from onboarding/pillarscan-role.yaml with a suffix."
   type        = string
   default     = "PillarscanAuditRole"
 }
 
 variable "external_id_parameter" {
-  description = "Name of the SSM SecureString parameter holding the audit role's external ID. Created by hand so the value never enters Terraform state."
+  description = "Name of the SSM SecureString parameter holding the audit role's external ID (made in audit_role.tf)."
   type        = string
   default     = "/pillarscan/external-id"
 }
@@ -46,4 +46,10 @@ variable "alarm_email" {
   description = "Address to email when an alarm fires. Leave empty for alarms with no notification."
   type        = string
   default     = ""
+}
+
+variable "protect" {
+  description = "Deletion protection on the table and user pool, and refuse to delete buckets that still hold files. scripts/destroy.ps1 turns it off just before tearing everything down."
+  type        = bool
+  default     = true
 }

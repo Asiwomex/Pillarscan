@@ -151,3 +151,43 @@ def test_a_request_for_an_unknown_account_is_skipped(
     result = lambda_handler.handler(_request(user_id=USER, aws_account_id=MOTO_ACCOUNT_ID), None)
 
     assert result["scans"] == [{"skipped": MOTO_ACCOUNT_ID}]
+
+
+@pytest.mark.parametrize("code", ["AccessDenied", "NoSuchEntity"])
+def test_public_scan_is_skipped_when_the_platform_role_is_gone(
+    scanner_environment: None, table: Any, monkeypatch: pytest.MonkeyPatch, code: str
+) -> None:
+    def gone(*args: Any, **kwargs: Any) -> None:
+        raise ClientError({"Error": {"Code": code, "Message": "no"}}, "AssumeRole")
+
+    monkeypatch.setattr(lambda_handler, "assume_role_session", gone)
+
+    # Returning normally takes the message off the queue, so it never
+    # reaches the dead-letter queue and the error alarm stays quiet.
+    result = lambda_handler.handler(_request(source="schedule"), None)
+
+    assert result["scans"] == [{"skipped": "public", "reason": code}]
+    assert ScanStore(table).list_scans("000000000000") == []
+
+
+def test_public_scan_is_skipped_when_the_external_id_is_gone(
+    scanner_environment: None, table: Any
+) -> None:
+    boto3.client("ssm", region_name=REGION).delete_parameter(Name=PARAMETER)
+
+    result = lambda_handler.handler(_request(source="schedule"), None)
+
+    assert result["scans"] == [{"skipped": "public", "reason": "ParameterNotFound"}]
+
+
+def test_other_failures_of_the_public_scan_still_raise(
+    scanner_environment: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def throttled(*args: Any, **kwargs: Any) -> None:
+        raise ClientError({"Error": {"Code": "Throttling", "Message": "slow down"}}, "AssumeRole")
+
+    monkeypatch.setattr(lambda_handler, "assume_role_session", throttled)
+
+    # A fault that a retry could fix is left to the queue's retry and the alarm.
+    with pytest.raises(ClientError):
+        lambda_handler.handler(_request(source="schedule"), None)

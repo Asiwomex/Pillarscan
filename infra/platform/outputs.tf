@@ -30,3 +30,14 @@ output "user_pool_id" {
 output "role_template_url" {
   value = "https://${aws_s3_bucket.onboarding.bucket_regional_domain_name}/${aws_s3_object.role_template.key}"
 }
+
+output "audit_role_arn" {
+  description = "The platform's own read-only role. Pass to the CLI as --role-arn."
+  value       = aws_iam_role.audit.arn
+}
+
+output "audit_external_id" {
+  description = "Pass to the CLI as --external-id. Read it with: terraform output -raw audit_external_id"
+  value       = random_password.external_id.result
+  sensitive   = true
+}

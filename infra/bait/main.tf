@@ -42,7 +42,8 @@ resource "random_id" "suffix" {
 # Fails s3_public_access_block and s3_versioning. The bucket stays empty and
 # has no public policy or ACL, so nothing is actually exposed.
 resource "aws_s3_bucket" "bait" {
-  bucket = "pillarscan-bait-${random_id.suffix.hex}"
+  bucket        = "pillarscan-bait-${random_id.suffix.hex}"
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "bait" {

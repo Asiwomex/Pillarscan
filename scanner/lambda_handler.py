@@ -12,6 +12,12 @@ There are two kinds of request:
 Either way the function's own role can do almost nothing in AWS. It assumes
 a read-only audit role in the account to scan and uses that.
 
+A role that cannot be assumed is not an error in the scanner. It usually
+means someone removed Pillarscan from that account, which they are free to
+do, so the request is logged and dropped. Raising would put the message
+back on the queue, send it to the dead-letter queue and fire the error
+alarm every day for something nobody needs to fix.
+
 Environment:
     TABLE_NAME             DynamoDB table for scans and connected accounts
     AUDIT_ROLE_ARN         audit role in the platform's own account
@@ -44,6 +50,10 @@ COULD_NOT_ASSUME = (
 )
 WRONG_ACCOUNT = "The role belongs to a different AWS account from the one entered."
 
+# What AWS answers when the role, or the parameter holding its external ID,
+# no longer exists or no longer trusts the scanner.
+ROLE_GONE = {"AccessDenied", "NoSuchEntity", "ParameterNotFound"}
+
 
 def _own_external_id() -> str:
     # Read at run time rather than kept in an environment variable, where
@@ -56,9 +66,18 @@ def _own_external_id() -> str:
 
 
 def scan_own_account() -> dict[str, Any]:
-    session = assume_role_session(
-        boto3.Session(), os.environ["AUDIT_ROLE_ARN"], _own_external_id()
-    )
+    try:
+        session = assume_role_session(
+            boto3.Session(), os.environ["AUDIT_ROLE_ARN"], _own_external_id()
+        )
+    except ClientError as error:
+        code = error.response["Error"]["Code"]
+        if code not in ROLE_GONE:
+            raise
+        logger.warning(
+            "skipping the public scan: the platform's audit role cannot be used (%s)", code
+        )
+        return {"skipped": "public", "reason": code}
     # The API serves these scans without sign-in, so the account ID, user
     # names and resource IDs are replaced before anything is stored.
     report = scrub(run_scan(session).to_dict())
@@ -82,7 +101,7 @@ def scan_connected_account(user_id: str, aws_account_id: str) -> dict[str, Any]:
     except ClientError as error:
         # Retrying will not help: the role is missing or does not trust us.
         # Record why, so the user sees it, and let the message go.
-        logger.info("cannot assume role: %s", error.response["Error"]["Code"])
+        logger.warning("cannot assume role: %s", error.response["Error"]["Code"])
         accounts.record_failure(user_id, aws_account_id, COULD_NOT_ASSUME)
         return {"failed": aws_account_id}
 

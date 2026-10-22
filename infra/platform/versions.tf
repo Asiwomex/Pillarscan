@@ -43,10 +43,6 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
 
-  # Built from the caller's identity so no account ID is committed.
-  audit_role_arn            = "arn:aws:iam::${local.account_id}:role/${var.audit_role_name}"
-  external_id_parameter_arn = "arn:aws:ssm:${var.region}:${local.account_id}:parameter${var.external_id_parameter}"
-
   lambda_runtime      = "python3.13"
   lambda_architecture = "arm64" # Graviton: cheaper per millisecond than x86.
   log_retention_days  = 14

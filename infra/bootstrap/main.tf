@@ -28,6 +28,12 @@ provider "aws" {
   }
 }
 
+variable "protect" {
+  description = "Refuse to delete the state bucket while it holds files. scripts/destroy.ps1 turns this off last of all."
+  type        = bool
+  default     = true
+}
+
 # Bucket names are global. A random suffix avoids collisions without
 # putting the account ID in the name.
 resource "random_id" "suffix" {
@@ -35,7 +41,10 @@ resource "random_id" "suffix" {
 }
 
 resource "aws_s3_bucket" "state" {
-  bucket = "pillarscan-tfstate-${random_id.suffix.hex}"
+  # With protection off, destroying the bucket first deletes every object
+  # and every old version in it. Versioned buckets otherwise refuse.
+  bucket        = "pillarscan-tfstate-${random_id.suffix.hex}"
+  force_destroy = !var.protect
 }
 
 # State can contain sensitive values, so the bucket is private, encrypted

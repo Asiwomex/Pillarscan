@@ -40,7 +40,7 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  deletion_protection = "ACTIVE"
+  deletion_protection = var.protect ? "ACTIVE" : "INACTIVE"
 }
 
 # Cognito hosts the sign-in pages at this address, so the site never sees
@@ -87,7 +87,8 @@ resource "aws_cognito_user_pool_client" "site" {
 # Pillarscan's own scanner reports this bucket as lacking a public access
 # block. That finding is accurate, and it is deliberate here.
 resource "aws_s3_bucket" "onboarding" {
-  bucket = "pillarscan-onboarding-${random_id.suffix.hex}"
+  bucket        = "pillarscan-onboarding-${random_id.suffix.hex}"
+  force_destroy = !var.protect
 }
 
 resource "aws_s3_bucket_public_access_block" "onboarding" {

@@ -53,12 +53,13 @@ resource "aws_lambda_function" "scanner" {
   environment {
     variables = {
       TABLE_NAME            = aws_dynamodb_table.scans.name
-      AUDIT_ROLE_ARN        = local.audit_role_arn
-      EXTERNAL_ID_PARAMETER = var.external_id_parameter
+      AUDIT_ROLE_ARN        = aws_iam_role.audit.arn
+      EXTERNAL_ID_PARAMETER = aws_ssm_parameter.external_id.name
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.scanner]
+  # The role needs its read-only policies before the first scan runs.
+  depends_on = [aws_cloudwatch_log_group.scanner, aws_iam_role_policy_attachment.audit]
 }
 
 resource "aws_lambda_event_source_mapping" "scan_requests" {
@@ -118,7 +119,7 @@ data "aws_iam_policy_document" "scanner" {
   statement {
     sid       = "ReadExternalId"
     actions   = ["ssm:GetParameter"]
-    resources = [local.external_id_parameter_arn]
+    resources = [aws_ssm_parameter.external_id.arn]
   }
 
   # Audit roles in any account, but only ones with this name. Each of those

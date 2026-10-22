@@ -107,16 +107,34 @@ Each check is one file in [scanner/checks](scanner/checks), named after its `che
 
 ## Backend
 
-Terraform in [infra/platform](infra/platform) creates the queue, both Lambdas, the table, the API and two alarms. State is kept in an S3 bucket made by [infra/bootstrap](infra/bootstrap).
+Terraform in [infra/platform](infra/platform) creates the queue, both Lambdas, the table, the API, sign-in, the daily schedule, two alarms, and the read-only role and external ID the daily scan uses. State is kept in an S3 bucket made by [infra/bootstrap](infra/bootstrap). Every AWS resource the project uses is made by Terraform, so nothing outlives a teardown.
+
+One script deploys it all, or updates a deployment. Each `terraform apply` shows its plan and waits for you to type `yes`:
 
 ```powershell
-python scripts/build_lambdas.py
-cd infra/platform
-terraform init -backend-config=backend.hcl
-terraform apply
+aws login --profile pillarscan
+.\scripts\deploy.ps1            # add -WithBait for the misconfigured test resources
 ```
 
+It ends by printing the API address and sign-in settings to give the site. Terraform cannot read the credentials `aws login` caches, so the scripts ask the AWS CLI to hand them over as short-lived environment variables first.
+
 The public routes are `GET /health`, `GET /scans` for the history and `GET /scans/{scan_id}` for one scan (`latest` works as an ID). The `/me/...` routes are for signed-in users: connect an account, request a scan, read your own scans and disconnect an account (which deletes its scans).
+
+## Removing Pillarscan
+
+There are two kinds of removal, and each cleans up after itself.
+
+**A user removes an account.** Disconnecting it on the site deletes the account and every scan of it, so nothing runs against it again. The read-only role stays in their AWS account until they delete its CloudFormation stack; the site names the stack. Pillarscan cannot delete it for them, because it only ever has read access. If someone deletes the role without disconnecting first, the scanner treats "cannot assume the role" as the account having left: it records that and moves on. It does not raise, so the request never piles up in the dead-letter queue and the error alarm stays quiet.
+
+**The owner removes the platform.** One command:
+
+```powershell
+.\scripts\destroy.ps1                    # platform and bait; keeps the state bucket
+.\scripts\destroy.ps1 -IncludeBootstrap  # the state bucket too
+.\scripts\destroy.ps1 -CheckOnly         # only look for anything left
+```
+
+It refreshes Terraform's record against AWS, turns off the deletion protection on the table and user pool, destroys the platform, the bait and (if asked) the state bucket with every old version in it. Then it looks for anything still tagged `project=pillarscan` or `project=pillarscan-bait`, any Pillarscan IAM role and any role stack made from the onboarding template, offers to delete those stacks, and exits with an error if anything is left. The tag lookup can trail deletions by up to an hour, so a resource that was just deleted may still show; run `-CheckOnly` again later.
 
 ## Signing in and connecting an account
 
