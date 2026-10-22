@@ -41,3 +41,7 @@ backend.hcl
 Thumbs.db
 .vscode/
 .idea/
+
+# AI assistant settings, kept on this machine only
+CLAUDE.md
+.claude/
