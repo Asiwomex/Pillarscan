@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { API_ONLINE } from "./backend";
 import type { ScanReport, ScanSummary } from "./findings";
 
 export type Scan = {
@@ -33,7 +34,8 @@ export function loadScans(): Scan[] {
     },
     {
       id: "real",
-      label: "Live account",
+      // "Live" only while there is a backend scanning it every day.
+      label: API_ONLINE ? "Live account" : "Project account",
       // Shown only if JavaScript is off; the dashboard swaps this scan for
       // the latest one from the API as soon as it is opened.
       note:

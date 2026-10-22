@@ -24,6 +24,7 @@ import {
   type Session,
 } from "@/lib/auth";
 import type { ScanReport, ScanSummary } from "@/lib/findings";
+import { REPO_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 
 const POLL_EVERY_MS = 5000;
@@ -64,6 +65,37 @@ function SignedOut({ notice, onSignIn }: { notice: string | null; onSignIn: () =
         >
           Open the demo
         </Link>
+      </div>
+    </div>
+  );
+}
+
+/** Shown instead of the sign-in page while the backend is switched off. */
+export function AccountsPaused() {
+  return (
+    <div className="max-w-2xl">
+      <h1 className="text-[clamp(2rem,5vw,3.25rem)] leading-[1.05] font-semibold tracking-[-0.03em] text-balance">
+        Scan your own AWS account.
+      </h1>
+      <p className="mt-5 text-lg leading-relaxed text-pretty text-on-night-muted">
+        This part of Pillarscan is paused. The backend that signs people in and scans their
+        accounts is switched off for now, so the project costs nothing while nobody is using
+        it. It comes back with one command. Until then, the demo shows everything the scanner
+        finds, and the code for this page is on GitHub.
+      </p>
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <Link
+          href="/#demo"
+          className={cn(DARK_BUTTON, "bg-sound-bright text-night active:scale-[0.97]")}
+        >
+          Open the demo
+        </Link>
+        <a
+          href={REPO_URL}
+          className={cn(DARK_BUTTON, "border border-night-line hover:border-on-night-muted")}
+        >
+          Read the source
+        </a>
       </div>
     </div>
   );

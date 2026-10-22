@@ -3,6 +3,7 @@ import { Check, CircleDashed } from "lucide-react";
 
 import { SeverityMark } from "@/components/severity-mark";
 import { Mark } from "@/components/site/mark";
+import { ACCOUNTS_ONLINE } from "@/lib/backend";
 import { PILLARS, PILLAR_LABELS, SEVERITIES, type Finding } from "@/lib/findings";
 import { AUTHOR_URL, LYTAWORKS_URL, REPO_URL } from "@/lib/links";
 
@@ -128,6 +129,9 @@ export function Checks({ findings }: { findings: Finding[] }) {
   );
 }
 
+// Added to the two items that need the backend while it is switched off.
+const PAUSED = " Switched off for now so the project costs nothing; it comes back with one command.";
+
 const PROGRESS = [
   {
     done: true,
@@ -143,11 +147,13 @@ const PROGRESS = [
     done: true,
     title: "Scan history",
     body: "A daily scan on Lambda, stored in DynamoDB and served by an API.",
+    needsBackend: true,
   },
   {
     done: true,
     title: "Connect your own account",
     body: "Sign in by invitation, create the read-only role in one click, and scan from the browser.",
+    needsBackend: true,
   },
 ];
 
@@ -197,7 +203,10 @@ export function Progress() {
                     · {item.done ? "built" : "planned"}
                   </span>
                 </h3>
-                <p className="mt-1 text-pretty text-on-night-muted">{item.body}</p>
+                <p className="mt-1 text-pretty text-on-night-muted">
+                  {item.body}
+                  {"needsBackend" in item && !ACCOUNTS_ONLINE && PAUSED}
+                </p>
               </div>
             </li>
           ))}

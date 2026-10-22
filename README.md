@@ -167,6 +167,8 @@ pnpm install
 pnpm dev
 ```
 
+The site finds the backend through three environment variables, set in Vercel and printed by `scripts/deploy.ps1`: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_COGNITO_DOMAIN` and `NEXT_PUBLIC_COGNITO_CLIENT_ID` (none is a secret; see [web/lib/backend.ts](web/lib/backend.ts)). Without them the site runs on its saved scans alone: the demo works in full, and sign-in and the project account's daily history say the backend is paused instead of failing. That is how it runs while the backend is torn down. For local development against a backend, put them in `web/.env.local`.
+
 The score is the severity-weighted share of checks that passed; see [web/lib/score.ts](web/lib/score.ts). The visual direction is written down in [DESIGN.md](DESIGN.md).
 
 ## Sample data

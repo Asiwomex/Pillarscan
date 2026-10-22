@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
-import { AccountApp } from "@/components/account/account-app";
+import { AccountApp, AccountsPaused } from "@/components/account/account-app";
 import { Footer } from "@/components/site/sections";
 import { SiteHeader } from "@/components/site/site-header";
+import { ACCOUNTS_ONLINE } from "@/lib/backend";
 
 export const metadata: Metadata = {
   title: "Your AWS accounts · Pillarscan",
@@ -17,7 +18,7 @@ export default function AccountPage() {
     <>
       <SiteHeader />
       <main className="mx-auto min-h-[70vh] max-w-6xl px-4 py-[clamp(2.5rem,7vw,5rem)] sm:px-6">
-        <AccountApp />
+        {ACCOUNTS_ONLINE ? <AccountApp /> : <AccountsPaused />}
       </main>
       <Footer />
     </>

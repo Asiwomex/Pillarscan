@@ -10,6 +10,7 @@ import { Overview } from "@/components/overview";
 import { PillarWall } from "@/components/pillar-wall";
 import { Mark } from "@/components/site/mark";
 import { fetchHistory, fetchScan } from "@/lib/api";
+import { API_ONLINE } from "@/lib/backend";
 import { breakdown } from "@/lib/breakdown";
 import {
   PILLARS,
@@ -149,6 +150,11 @@ const LIVE_NOTE: Record<Live["status"], string> = {
     "This project's own AWS account, scanned every day by a Lambda function. Account and resource IDs are replaced before a scan is stored.",
 };
 
+// While the backend is switched off there is nothing to fetch, so the
+// saved copy is all there is, and the note says so.
+const OFFLINE_NOTE =
+  "A saved scan of this project's own AWS account, with the account ID and resource IDs replaced. The daily scan is paused while the backend is switched off.";
+
 export function Dashboard({
   scans,
   caption = "Live demo",
@@ -194,7 +200,7 @@ export function Dashboard({
     setFilters(DEFAULT_FILTERS);
     // Fetched the first time the live scan is opened, not on page load, so
     // visitors who only look at the demo never call the API.
-    if (id === LIVE_SCAN_ID && live.status === "idle") void loadLive();
+    if (id === LIVE_SCAN_ID && API_ONLINE && live.status === "idle") void loadLive();
   }
 
   const summary = useMemo(() => {
@@ -319,7 +325,9 @@ export function Dashboard({
       <div className="flex flex-col gap-4 px-4 pt-5 pb-6 sm:px-6">
         <p className="max-w-3xl text-[0.8125rem] text-pretty text-muted-ink">
           <span className="font-medium text-ink">{scan.label}.</span>{" "}
-          <span aria-live="polite">{isLive ? LIVE_NOTE[live.status] : scan.note}</span>
+          <span aria-live="polite">
+            {isLive ? (API_ONLINE ? LIVE_NOTE[live.status] : OFFLINE_NOTE) : scan.note}
+          </span>
           {isLive && live.status === "failed" && (
             <button
               type="button"

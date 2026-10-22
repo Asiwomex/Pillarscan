@@ -8,11 +8,7 @@
 
 import { useSyncExternalStore } from "react";
 
-// Neither value is a secret. They say which sign-in page and which app.
-const COGNITO_DOMAIN =
-  process.env.NEXT_PUBLIC_COGNITO_DOMAIN ??
-  "https://pillarscan-8cf06f80.auth.us-east-1.amazoncognito.com";
-const CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? "7t6utkue0gvevikhffi16v4821";
+import { COGNITO_CLIENT_ID as CLIENT_ID, COGNITO_DOMAIN } from "./backend";
 
 const SESSION_KEY = "pillarscan.session";
 const PENDING_KEY = "pillarscan.sign-in";

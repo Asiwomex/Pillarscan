@@ -72,7 +72,8 @@ Write-Host @"
      NEXT_PUBLIC_API_URL            $apiUrl
      NEXT_PUBLIC_COGNITO_DOMAIN     $cognitoDomain
      NEXT_PUBLIC_COGNITO_CLIENT_ID  $clientId
-   (Or update the fallbacks in web/lib/api.ts and web/lib/auth.ts.)
+   Until they are set, the site keeps running on its saved scans and says
+   sign-in is paused. For local development, put them in web/.env.local.
 
 2. Invite yourself again; the user pool is new:
      aws cognito-idp admin-create-user --user-pool-id $poolId --username <your-email> --profile $AwsProfile
