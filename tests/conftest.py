@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from collections.abc import Iterator
 from typing import Any
 
@@ -8,6 +9,34 @@ import pytest
 from moto import mock_aws
 
 TABLE_NAME = "pillarscan-test"
+
+# moto loads each mocked service the first time a test calls it. The scanner
+# runs its checks in eight threads, so two threads can load services at the
+# same moment and deadlock on Python's import lock ("deadlock detected by
+# _ModuleLock('moto.logs.models')"). The check then reports an error and the
+# test fails, in about two runs out of three for a test run on its own.
+# Loading every service the checks use once, before any thread starts,
+# removes the race. Real scans use boto3 against AWS and are not affected.
+MOCKED_SERVICES = (
+    "autoscaling",
+    "awslambda",
+    "cloudtrail",
+    "dynamodb",
+    "ec2",
+    "elbv2",
+    "guardduty",
+    "iam",
+    "logs",
+    "rds",
+    "s3",
+    "s3control",
+    "sqs",
+    "ssm",
+    "sts",
+)
+for _service in MOCKED_SERVICES:
+    importlib.import_module(f"moto.{_service}.models")
+    importlib.import_module(f"moto.{_service}.responses")
 
 
 @pytest.fixture(autouse=True)
